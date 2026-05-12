@@ -1,37 +1,70 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
-
-const WormholeConnect = dynamic(
-  () => import("@wormhole-foundation/wormhole-connect"),
-  { ssr: false }
-);
+import { useEffect, useRef } from "react";
 
 export default function WormholeBridge({
   activeTab,
 }: {
   activeTab: "swap" | "usdc";
 }) {
-  const [AutomaticCCTPRoute, setAutomaticCCTPRoute] = useState<unknown>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    import("@wormhole-foundation/wormhole-connect").then((mod) => {
-      setAutomaticCCTPRoute(() => mod.AutomaticCCTPRoute);
-    });
-  }, []);
+    let mounted = true;
 
-  const config =
-    activeTab === "usdc" && AutomaticCCTPRoute
-      ? {
-          network: "Mainnet",
-          routes: [AutomaticCCTPRoute],
-          ui: { title: "USDC Transfer" },
-        }
-      : {
-          network: "Mainnet",
-          ui: { title: "Swap" },
-        };
+    async function loadBridge() {
+      if (!mounted || !containerRef.current) return;
 
-  return <WormholeConnect key={activeTab} config={config as never} />;
+      const mod = await Function(
+        'return import("@wormhole-foundation/wormhole-connect")'
+      )();
+
+      if (!mounted || !containerRef.current) return;
+
+      const WormholeConnect = mod.default;
+      const AutomaticCCTPRoute = mod.AutomaticCCTPRoute;
+
+      containerRef.current.innerHTML = "";
+
+      const root = document.createElement("div");
+      containerRef.current.appendChild(root);
+
+      const React = await Function('return import("react")')();
+      const ReactDOM = await Function('return import("react-dom/client")')();
+
+      const config =
+        activeTab === "usdc" && AutomaticCCTPRoute
+          ? {
+              network: "Mainnet",
+              routes: [AutomaticCCTPRoute],
+              ui: { title: "USDC Transfer" },
+            }
+          : {
+              network: "Mainnet",
+              ui: { title: "Swap" },
+            };
+
+      const reactRoot = ReactDOM.createRoot(root);
+      reactRoot.render(React.createElement(WormholeConnect, { config }));
+    }
+
+    loadBridge();
+
+    return () => {
+      mounted = false;
+      if (containerRef.current) {
+        containerRef.current.innerHTML = "";
+      }
+    };
+  }, [activeTab]);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        width: "100%",
+        minHeight: 600,
+      }}
+    />
+  );
 }
