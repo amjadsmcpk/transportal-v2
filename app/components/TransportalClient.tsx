@@ -40,31 +40,47 @@ export default function TransportalClient() {
     const css = document.createElement("style");
 
     css.innerHTML = `
-      [role="dialog"],
-      [data-radix-popper-content-wrapper],
-      .MuiDialog-paper,
-      .MuiPopover-paper {
-        max-height: calc(100vh - 30px) !important;
-        overflow-y: auto !important;
+      body {
         overflow-x: hidden !important;
       }
 
-      [role="dialog"]::-webkit-scrollbar,
-      .MuiDialog-paper::-webkit-scrollbar,
-      .MuiPopover-paper::-webkit-scrollbar {
-        width: 6px !important;
+      [role="dialog"],
+      [data-radix-popper-content-wrapper],
+      .MuiDialog-paper,
+      .MuiPopover-paper,
+      .chakra-modal__content,
+      .chakra-modal__body {
+        max-height: 85vh !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        overscroll-behavior: contain !important;
+        touch-action: auto !important;
+        pointer-events: auto !important;
       }
 
-      [role="dialog"]::-webkit-scrollbar-track,
-      .MuiDialog-paper::-webkit-scrollbar-track,
-      .MuiPopover-paper::-webkit-scrollbar-track {
-        background: transparent !important;
+      [role="listbox"],
+      [cmdk-list],
+      .chakra-menu__menu-list {
+        max-height: 70vh !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        pointer-events: auto !important;
+        touch-action: auto !important;
+      }
+
+      [role="dialog"] *,
+      [role="listbox"] * {
+        pointer-events: auto !important;
+      }
+
+      [role="dialog"]::-webkit-scrollbar,
+      [role="listbox"]::-webkit-scrollbar {
+        width: 8px !important;
       }
 
       [role="dialog"]::-webkit-scrollbar-thumb,
-      .MuiDialog-paper::-webkit-scrollbar-thumb,
-      .MuiPopover-paper::-webkit-scrollbar-thumb {
-        background: rgba(255,255,255,0.45) !important;
+      [role="listbox"]::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.35) !important;
         border-radius: 999px !important;
       }
     `;
