@@ -4,11 +4,16 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
-import { AutomaticCCTPRoute } from "@wormhole-foundation/wormhole-connect";
-
 const WormholeConnect = dynamic(
   () => import("@wormhole-foundation/wormhole-connect"),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => (
+      <div style={{ color: "white", textAlign: "center", paddingTop: 120 }}>
+        Loading TRANSPORTAL...
+      </div>
+    ),
+  }
 );
 
 export default function Home() {
@@ -16,6 +21,8 @@ export default function Home() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [hovered, setHovered] = useState("");
+  const [AutomaticCCTPRoute, setAutomaticCCTPRoute] =
+    useState<unknown>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -27,72 +34,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const css = document.createElement("style");
-
-    css.innerHTML = `
-      .transportal-scroll-modal {
-        max-height: calc(100vh - 28px) !important;
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
-        scrollbar-width: thin !important;
-        scrollbar-color: rgba(255,255,255,0.45) transparent !important;
-      }
-
-      .transportal-scroll-modal::-webkit-scrollbar {
-        width: 6px !important;
-      }
-
-      .transportal-scroll-modal::-webkit-scrollbar-track {
-        background: transparent !important;
-      }
-
-      .transportal-scroll-modal::-webkit-scrollbar-thumb {
-        background: rgba(255,255,255,0.45) !important;
-        border-radius: 999px !important;
-      }
-    `;
-
-    document.head.appendChild(css);
-
-    const makeTokenModalScrollable = () => {
-      const allDivs = Array.from(document.querySelectorAll("div"));
-
-      const title = allDivs.find(
-        (el) => el.textContent?.trim() === "Select token"
-      );
-
-      if (!title) return;
-
-      let modal: HTMLElement | null = title.parentElement;
-
-      for (let i = 0; i < 8 && modal; i++) {
-        const rect = modal.getBoundingClientRect();
-
-        if (rect.width > 350 && rect.height > 350) {
-          modal.classList.add("transportal-scroll-modal");
-          modal.style.maxHeight = "calc(100vh - 28px)";
-          modal.style.overflowY = "auto";
-          modal.style.overflowX = "hidden";
-          break;
-        }
-
-        modal = modal.parentElement;
-      }
-    };
-
-    const observer = new MutationObserver(makeTokenModalScrollable);
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
+    import("@wormhole-foundation/wormhole-connect").then((mod) => {
+      setAutomaticCCTPRoute(() => mod.AutomaticCCTPRoute);
     });
-
-    makeTokenModalScrollable();
-
-    return () => {
-      observer.disconnect();
-      document.head.removeChild(css);
-    };
   }, []);
 
   const menuStyle = (name: string, active = false) => ({
@@ -120,6 +64,22 @@ export default function Home() {
     paddingBottom: 4,
     transition: "all 0.2s ease",
   });
+
+  const wormholeConfig =
+    activeTab === "usdc" && AutomaticCCTPRoute
+      ? {
+          network: "Mainnet",
+          routes: [AutomaticCCTPRoute],
+          ui: {
+            title: "USDC Transfer",
+          },
+        }
+      : {
+          network: "Mainnet",
+          ui: {
+            title: "Swap",
+          },
+        };
 
   return (
     <main
@@ -285,16 +245,7 @@ export default function Home() {
         >
           <WormholeConnect
             key={activeTab}
-            config={{
-              network: "Mainnet",
-              routes:
-                activeTab === "usdc"
-                  ? [AutomaticCCTPRoute]
-                  : undefined,
-              ui: {
-                title: activeTab === "swap" ? "Swap" : "USDC Transfer",
-              },
-            }}
+            config={wormholeConfig as never}
           />
         </div>
       </section>
@@ -351,13 +302,7 @@ export default function Home() {
           </a>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 18,
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
           <a
             href="https://x.com/wormhole"
             target="_blank"
@@ -393,7 +338,6 @@ export default function Home() {
               viewBox="0 0 127.14 96.36"
               fill="white"
               xmlns="http://www.w3.org/2000/svg"
-              style={{ display: "block" }}
             >
               <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,33.35-1.74,58,0.56,82.31A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.11a68.42,68.42,0,0,1-10.85-5.18c0.91-.66,1.8-1.34,2.66-2A75.57,75.57,0,0,0,95.73,78c0.87,0.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.24,105.25,105.25,0,0,0,32.17-14C129.27,54.14,124.14,29.71,107.7,8.07ZM42.45,65.69C36.18,65.69,31,59.92,31,52.84S36.06,40,42.45,40s11.58,5.82,11.47,12.85C53.81,59.92,48.78,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.23,59.92,73.23,52.84S78.3,40,84.69,40s11.58,5.82,11.47,12.85C96.05,59.92,91,65.69,84.69,65.69Z" />
             </svg>
