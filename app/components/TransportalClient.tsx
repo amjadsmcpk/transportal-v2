@@ -36,6 +36,46 @@ export default function TransportalClient() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  useEffect(() => {
+    const css = document.createElement("style");
+
+    css.innerHTML = `
+      [role="dialog"],
+      [data-radix-popper-content-wrapper],
+      .MuiDialog-paper,
+      .MuiPopover-paper {
+        max-height: calc(100vh - 30px) !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+      }
+
+      [role="dialog"]::-webkit-scrollbar,
+      .MuiDialog-paper::-webkit-scrollbar,
+      .MuiPopover-paper::-webkit-scrollbar {
+        width: 6px !important;
+      }
+
+      [role="dialog"]::-webkit-scrollbar-track,
+      .MuiDialog-paper::-webkit-scrollbar-track,
+      .MuiPopover-paper::-webkit-scrollbar-track {
+        background: transparent !important;
+      }
+
+      [role="dialog"]::-webkit-scrollbar-thumb,
+      .MuiDialog-paper::-webkit-scrollbar-thumb,
+      .MuiPopover-paper::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.45) !important;
+        border-radius: 999px !important;
+      }
+    `;
+
+    document.head.appendChild(css);
+
+    return () => {
+      document.head.removeChild(css);
+    };
+  }, []);
+
   const menuStyle = (name: string, active = false) => ({
     color: "white",
     background: "transparent",

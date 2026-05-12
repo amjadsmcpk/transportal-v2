@@ -1,41 +1,17 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
-
-const WormholeConnect = dynamic(
-  async () => {
-    const mod = await import("@wormhole-foundation/wormhole-connect");
-    return mod.default;
-  },
-  {
-    ssr: false,
-  }
-);
+import WormholeConnect, {
+  AutomaticCCTPRoute,
+  type config,
+} from "@wormhole-foundation/wormhole-connect";
 
 export default function WormholeBridge({
   activeTab,
 }: {
   activeTab: "swap" | "usdc";
 }) {
-  const [mounted, setMounted] = useState(false);
-  const [AutomaticCCTPRoute, setAutomaticCCTPRoute] =
-    useState<unknown>(null);
-
-  useEffect(() => {
-    setMounted(true);
-
-    import("@wormhole-foundation/wormhole-connect").then((mod) => {
-      setAutomaticCCTPRoute(() => mod.AutomaticCCTPRoute);
-    });
-  }, []);
-
-  if (!mounted) {
-    return null;
-  }
-
-  const config =
-    activeTab === "usdc" && AutomaticCCTPRoute
+  const wormholeConfig: config.WormholeConnectConfig =
+    activeTab === "usdc"
       ? {
           network: "Mainnet",
           routes: [AutomaticCCTPRoute],
@@ -50,9 +26,5 @@ export default function WormholeBridge({
           },
         };
 
-  return (
-    <WormholeConnect
-      config={config as never}
-    />
-  );
+  return <WormholeConnect key={activeTab} config={wormholeConfig} />;
 }
