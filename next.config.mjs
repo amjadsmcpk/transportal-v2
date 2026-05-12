@@ -1,4 +1,16 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  transpilePackages: ["@wormhole-foundation/wormhole-connect"],
+
+  webpack: (config, { isServer }) => {
+    config.resolve = config.resolve || {};
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      encoding: false,
+    };
+
+    return config;
+  },
+};
 
 export default nextConfig;
