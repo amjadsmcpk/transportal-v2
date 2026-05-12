@@ -40,46 +40,28 @@ export default function TransportalClient() {
     const css = document.createElement("style");
 
     css.innerHTML = `
-      body {
-        overflow-x: hidden !important;
-      }
-
-      [role="dialog"],
-      [data-radix-popper-content-wrapper],
-      .MuiDialog-paper,
-      .MuiPopover-paper,
-      .chakra-modal__content,
-      .chakra-modal__body {
-        max-height: 85vh !important;
+      [role="listbox"],
+      [cmdk-list],
+      .chakra-menu__menu-list,
+      .token-list,
+      .token-select-list {
+        max-height: 320px !important;
         overflow-y: auto !important;
         overflow-x: hidden !important;
         overscroll-behavior: contain !important;
-        touch-action: auto !important;
-        pointer-events: auto !important;
+        touch-action: pan-y !important;
+        -webkit-overflow-scrolling: touch !important;
       }
 
-      [role="listbox"],
-      [cmdk-list],
-      .chakra-menu__menu-list {
-        max-height: 70vh !important;
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
-        pointer-events: auto !important;
-        touch-action: auto !important;
+      [role="listbox"]::-webkit-scrollbar,
+      [cmdk-list]::-webkit-scrollbar,
+      .chakra-menu__menu-list::-webkit-scrollbar {
+        width: 6px !important;
       }
 
-      [role="dialog"] *,
-      [role="listbox"] * {
-        pointer-events: auto !important;
-      }
-
-      [role="dialog"]::-webkit-scrollbar,
-      [role="listbox"]::-webkit-scrollbar {
-        width: 8px !important;
-      }
-
-      [role="dialog"]::-webkit-scrollbar-thumb,
-      [role="listbox"]::-webkit-scrollbar-thumb {
+      [role="listbox"]::-webkit-scrollbar-thumb,
+      [cmdk-list]::-webkit-scrollbar-thumb,
+      .chakra-menu__menu-list::-webkit-scrollbar-thumb {
         background: rgba(255,255,255,0.35) !important;
         border-radius: 999px !important;
       }
