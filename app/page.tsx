@@ -4,12 +4,19 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
-const WormholeConnect = dynamic(
-  () => import("@wormhole-foundation/wormhole-connect"),
+const WormholeBridge = dynamic(
+  () => import("./components/WormholeBridge"),
   {
     ssr: false,
     loading: () => (
-      <div style={{ color: "white", textAlign: "center", paddingTop: 120 }}>
+      <div
+        style={{
+          color: "white",
+          textAlign: "center",
+          paddingTop: 120,
+          fontSize: 18,
+        }}
+      >
         Loading TRANSPORTAL...
       </div>
     ),
@@ -21,22 +28,15 @@ export default function Home() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [hovered, setHovered] = useState("");
-  const [AutomaticCCTPRoute, setAutomaticCCTPRoute] =
-    useState<unknown>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
+
     check();
 
     window.addEventListener("resize", check);
 
     return () => window.removeEventListener("resize", check);
-  }, []);
-
-  useEffect(() => {
-    import("@wormhole-foundation/wormhole-connect").then((mod) => {
-      setAutomaticCCTPRoute(() => mod.AutomaticCCTPRoute);
-    });
   }, []);
 
   const menuStyle = (name: string, active = false) => ({
@@ -64,22 +64,6 @@ export default function Home() {
     paddingBottom: 4,
     transition: "all 0.2s ease",
   });
-
-  const wormholeConfig =
-    activeTab === "usdc" && AutomaticCCTPRoute
-      ? {
-          network: "Mainnet",
-          routes: [AutomaticCCTPRoute],
-          ui: {
-            title: "USDC Transfer",
-          },
-        }
-      : {
-          network: "Mainnet",
-          ui: {
-            title: "Swap",
-          },
-        };
 
   return (
     <main
@@ -243,10 +227,7 @@ export default function Home() {
             transformOrigin: "top center",
           }}
         >
-          <WormholeConnect
-            key={activeTab}
-            config={wormholeConfig as never}
-          />
+          <WormholeBridge activeTab={activeTab} />
         </div>
       </section>
 
@@ -302,7 +283,13 @@ export default function Home() {
           </a>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 18,
+          }}
+        >
           <a
             href="https://x.com/wormhole"
             target="_blank"
