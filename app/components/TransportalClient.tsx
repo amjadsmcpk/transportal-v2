@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import TokenSelectorScrollFix from "./TokenSelectorScrollFix";
 
 const WormholeBridge = dynamic(() => import("./WormholeBridge"), {
   ssr: false,
@@ -15,7 +16,7 @@ const WormholeBridge = dynamic(() => import("./WormholeBridge"), {
         fontSize: 18,
       }}
     >
-      
+      Loading TRANSPORTAL...
     </div>
   ),
 });
@@ -28,105 +29,12 @@ export default function TransportalClient() {
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
+
     check();
+
     window.addEventListener("resize", check);
+
     return () => window.removeEventListener("resize", check);
-  }, []);
-
-  useEffect(() => {
-    const style = document.createElement("style");
-
-    style.innerHTML = `
-      .transportal-token-inner-scroll {
-        max-height: 300px !important;
-        overflow-y: scroll !important;
-        overflow-x: hidden !important;
-        padding-right: 8px !important;
-        scrollbar-width: thin !important;
-        scrollbar-color: rgba(255,255,255,0.55) transparent !important;
-      }
-
-      .transportal-token-inner-scroll::-webkit-scrollbar {
-        width: 7px !important;
-      }
-
-      .transportal-token-inner-scroll::-webkit-scrollbar-track {
-        background: transparent !important;
-      }
-
-      .transportal-token-inner-scroll::-webkit-scrollbar-thumb {
-        background: rgba(255,255,255,0.55) !important;
-        border-radius: 999px !important;
-      }
-
-      .transportal-token-inner-scroll::-webkit-scrollbar-button {
-        display: none !important;
-        width: 0 !important;
-        height: 0 !important;
-      }
-    `;
-
-    document.head.appendChild(style);
-
-    const findTokenRowsContainer = () => {
-      const labels = Array.from(document.querySelectorAll("div, span, p"));
-
-      const allTokensLabel = labels.find(
-        (el) => el.textContent?.trim() === "All tokens"
-      );
-
-      if (!allTokensLabel) return null;
-
-      const parent = allTokensLabel.parentElement;
-      if (!parent) return null;
-
-      const candidates = Array.from(parent.querySelectorAll("div")).filter(
-        (el) => {
-          const rect = el.getBoundingClientRect();
-          const text = el.textContent || "";
-
-          return (
-            rect.width > 250 &&
-            rect.height > 180 &&
-            rect.height < 520 &&
-            text.length > 20 &&
-            !text.includes("Choose network") &&
-            !text.includes("Search for a token")
-          );
-        }
-      );
-
-      return (candidates[candidates.length - 1] as HTMLElement | undefined) || null;
-    };
-
-    const applyTokenScroll = () => {
-      document
-        .querySelectorAll(".transportal-token-inner-scroll")
-        .forEach((el) => el.classList.remove("transportal-token-inner-scroll"));
-
-      const tokenRowsContainer = findTokenRowsContainer();
-
-      if (tokenRowsContainer) {
-        tokenRowsContainer.classList.add("transportal-token-inner-scroll");
-      }
-    };
-
-    const observer = new MutationObserver(() => {
-      window.requestAnimationFrame(applyTokenScroll);
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-
-    const interval = window.setInterval(applyTokenScroll, 500);
-
-    return () => {
-      observer.disconnect();
-      window.clearInterval(interval);
-      document.head.removeChild(style);
-    };
   }, []);
 
   const menuStyle = (name: string, active = false) => ({
@@ -167,6 +75,8 @@ export default function TransportalClient() {
           "linear-gradient(90deg,#181818 0%,#101010 35%,#060606 70%,#000000 100%)",
       }}
     >
+      <TokenSelectorScrollFix />
+
       <div
         style={{
           position: "fixed",
