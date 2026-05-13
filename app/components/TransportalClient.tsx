@@ -15,7 +15,7 @@ const WormholeBridge = dynamic(() => import("./WormholeBridge"), {
         fontSize: 18,
       }}
     >
-      Loading TRANSPORTAL...
+      
     </div>
   ),
 });
