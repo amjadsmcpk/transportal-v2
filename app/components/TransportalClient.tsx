@@ -15,7 +15,7 @@ const WormholeBridge = dynamic(() => import("./WormholeBridge"), {
         fontSize: 18,
       }}
     >
-      Loading TRANSPORTAL...
+      
     </div>
   ),
 });
@@ -42,15 +42,15 @@ export default function TransportalClient() {
     style.innerHTML = `
       .transportal-token-scroll {
         max-height: 310px !important;
-        overflow-y: scroll !important;
+        overflow-y: auto !important;
         overflow-x: hidden !important;
-        padding-right: 10px !important;
+        padding-right: 8px !important;
         scrollbar-width: thin !important;
         scrollbar-color: rgba(255,255,255,0.45) transparent !important;
       }
 
       .transportal-token-scroll::-webkit-scrollbar {
-        width: 8px !important;
+        width: 6px !important;
       }
 
       .transportal-token-scroll::-webkit-scrollbar-track {
@@ -61,14 +61,25 @@ export default function TransportalClient() {
         background: rgba(255,255,255,0.45) !important;
         border-radius: 999px !important;
       }
+
+      .transportal-modal-no-scroll {
+        overflow: visible !important;
+        max-height: none !important;
+      }
     `;
 
     document.head.appendChild(style);
 
     const applyTokenScroll = () => {
-      const allElements = Array.from(
-        document.querySelectorAll("div, span, p")
-      );
+      document
+        .querySelectorAll(".transportal-token-scroll")
+        .forEach((el) => el.classList.remove("transportal-token-scroll"));
+
+      document
+        .querySelectorAll(".transportal-modal-no-scroll")
+        .forEach((el) => el.classList.remove("transportal-modal-no-scroll"));
+
+      const allElements = Array.from(document.querySelectorAll("div, span, p"));
 
       const allTokensLabel = allElements.find(
         (el) => el.textContent?.trim() === "All tokens"
@@ -76,17 +87,29 @@ export default function TransportalClient() {
 
       if (!allTokensLabel) return;
 
-      let current = allTokensLabel.parentElement;
+      let modalParent = allTokensLabel.parentElement;
 
-      for (let i = 0; i < 6 && current; i++) {
-        const rect = current.getBoundingClientRect();
+      for (let i = 0; i < 8 && modalParent; i++) {
+        const rect = modalParent.getBoundingClientRect();
 
-        if (rect.height > 250 && rect.width > 300 && rect.height < 700) {
-          current.classList.add("transportal-token-scroll");
+        if (rect.width > 350 && rect.height > 420) {
+          modalParent.classList.add("transportal-modal-no-scroll");
           break;
         }
 
-        current = current.parentElement;
+        modalParent = modalParent.parentElement;
+      }
+
+      let tokenList = allTokensLabel.nextElementSibling as HTMLElement | null;
+
+      if (!tokenList) {
+        tokenList = allTokensLabel.parentElement?.querySelector(
+          "div:nth-of-type(2)"
+        ) as HTMLElement | null;
+      }
+
+      if (tokenList) {
+        tokenList.classList.add("transportal-token-scroll");
       }
     };
 
@@ -97,7 +120,7 @@ export default function TransportalClient() {
       subtree: true,
     });
 
-    applyTokenScroll();
+    setTimeout(applyTokenScroll, 500);
 
     return () => {
       observer.disconnect();
