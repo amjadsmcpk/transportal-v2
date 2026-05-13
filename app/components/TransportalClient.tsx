@@ -15,7 +15,7 @@ const WormholeBridge = dynamic(() => import("./WormholeBridge"), {
         fontSize: 18,
       }}
     >
-      
+      Loading TRANSPORTAL...
     </div>
   ),
 });
@@ -28,11 +28,8 @@ export default function TransportalClient() {
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
-
     check();
-
     window.addEventListener("resize", check);
-
     return () => window.removeEventListener("resize", check);
   }, []);
 
@@ -40,90 +37,94 @@ export default function TransportalClient() {
     const style = document.createElement("style");
 
     style.innerHTML = `
-      .transportal-token-scroll {
-        max-height: 310px !important;
-        overflow-y: auto !important;
+      .transportal-token-inner-scroll {
+        max-height: 300px !important;
+        overflow-y: scroll !important;
         overflow-x: hidden !important;
         padding-right: 8px !important;
         scrollbar-width: thin !important;
-        scrollbar-color: rgba(255,255,255,0.45) transparent !important;
+        scrollbar-color: rgba(255,255,255,0.55) transparent !important;
       }
 
-      .transportal-token-scroll::-webkit-scrollbar {
-        width: 6px !important;
+      .transportal-token-inner-scroll::-webkit-scrollbar {
+        width: 7px !important;
       }
 
-      .transportal-token-scroll::-webkit-scrollbar-track {
+      .transportal-token-inner-scroll::-webkit-scrollbar-track {
         background: transparent !important;
       }
 
-      .transportal-token-scroll::-webkit-scrollbar-thumb {
-        background: rgba(255,255,255,0.45) !important;
+      .transportal-token-inner-scroll::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.55) !important;
         border-radius: 999px !important;
       }
 
-      .transportal-modal-no-scroll {
-        overflow: visible !important;
-        max-height: none !important;
+      .transportal-token-inner-scroll::-webkit-scrollbar-button {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
       }
     `;
 
     document.head.appendChild(style);
 
-    const applyTokenScroll = () => {
-      document
-        .querySelectorAll(".transportal-token-scroll")
-        .forEach((el) => el.classList.remove("transportal-token-scroll"));
+    const findTokenRowsContainer = () => {
+      const labels = Array.from(document.querySelectorAll("div, span, p"));
 
-      document
-        .querySelectorAll(".transportal-modal-no-scroll")
-        .forEach((el) => el.classList.remove("transportal-modal-no-scroll"));
-
-      const allElements = Array.from(document.querySelectorAll("div, span, p"));
-
-      const allTokensLabel = allElements.find(
+      const allTokensLabel = labels.find(
         (el) => el.textContent?.trim() === "All tokens"
       );
 
-      if (!allTokensLabel) return;
+      if (!allTokensLabel) return null;
 
-      let modalParent = allTokensLabel.parentElement;
+      const parent = allTokensLabel.parentElement;
+      if (!parent) return null;
 
-      for (let i = 0; i < 8 && modalParent; i++) {
-        const rect = modalParent.getBoundingClientRect();
+      const candidates = Array.from(parent.querySelectorAll("div")).filter(
+        (el) => {
+          const rect = el.getBoundingClientRect();
+          const text = el.textContent || "";
 
-        if (rect.width > 350 && rect.height > 420) {
-          modalParent.classList.add("transportal-modal-no-scroll");
-          break;
+          return (
+            rect.width > 250 &&
+            rect.height > 180 &&
+            rect.height < 520 &&
+            text.length > 20 &&
+            !text.includes("Choose network") &&
+            !text.includes("Search for a token")
+          );
         }
+      );
 
-        modalParent = modalParent.parentElement;
-      }
+      return (candidates[candidates.length - 1] as HTMLElement | undefined) || null;
+    };
 
-      let tokenList = allTokensLabel.nextElementSibling as HTMLElement | null;
+    const applyTokenScroll = () => {
+      document
+        .querySelectorAll(".transportal-token-inner-scroll")
+        .forEach((el) => el.classList.remove("transportal-token-inner-scroll"));
 
-      if (!tokenList) {
-        tokenList = allTokensLabel.parentElement?.querySelector(
-          "div:nth-of-type(2)"
-        ) as HTMLElement | null;
-      }
+      const tokenRowsContainer = findTokenRowsContainer();
 
-      if (tokenList) {
-        tokenList.classList.add("transportal-token-scroll");
+      if (tokenRowsContainer) {
+        tokenRowsContainer.classList.add("transportal-token-inner-scroll");
       }
     };
 
-    const observer = new MutationObserver(applyTokenScroll);
+    const observer = new MutationObserver(() => {
+      window.requestAnimationFrame(applyTokenScroll);
+    });
 
     observer.observe(document.body, {
       childList: true,
       subtree: true,
     });
 
-    setTimeout(applyTokenScroll, 500);
+    const interval = window.setInterval(applyTokenScroll, 500);
 
     return () => {
       observer.disconnect();
+      window.clearInterval(interval);
       document.head.removeChild(style);
     };
   }, []);
@@ -372,13 +373,7 @@ export default function TransportalClient() {
           </a>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 18,
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
           <a
             href="https://x.com/wormhole"
             target="_blank"
