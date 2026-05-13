@@ -37,40 +37,71 @@ export default function TransportalClient() {
   }, []);
 
   useEffect(() => {
-    const css = document.createElement("style");
+    const style = document.createElement("style");
 
-    css.innerHTML = `
-      [role="listbox"],
-      [cmdk-list],
-      .chakra-menu__menu-list,
-      .token-list,
-      .token-select-list {
-        max-height: 320px !important;
-        overflow-y: auto !important;
+    style.innerHTML = `
+      .transportal-token-scroll {
+        max-height: 310px !important;
+        overflow-y: scroll !important;
         overflow-x: hidden !important;
-        overscroll-behavior: contain !important;
-        touch-action: pan-y !important;
-        -webkit-overflow-scrolling: touch !important;
+        padding-right: 10px !important;
+        scrollbar-width: thin !important;
+        scrollbar-color: rgba(255,255,255,0.45) transparent !important;
       }
 
-      [role="listbox"]::-webkit-scrollbar,
-      [cmdk-list]::-webkit-scrollbar,
-      .chakra-menu__menu-list::-webkit-scrollbar {
-        width: 6px !important;
+      .transportal-token-scroll::-webkit-scrollbar {
+        width: 8px !important;
       }
 
-      [role="listbox"]::-webkit-scrollbar-thumb,
-      [cmdk-list]::-webkit-scrollbar-thumb,
-      .chakra-menu__menu-list::-webkit-scrollbar-thumb {
-        background: rgba(255,255,255,0.35) !important;
+      .transportal-token-scroll::-webkit-scrollbar-track {
+        background: transparent !important;
+      }
+
+      .transportal-token-scroll::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.45) !important;
         border-radius: 999px !important;
       }
     `;
 
-    document.head.appendChild(css);
+    document.head.appendChild(style);
+
+    const applyTokenScroll = () => {
+      const allElements = Array.from(
+        document.querySelectorAll("div, span, p")
+      );
+
+      const allTokensLabel = allElements.find(
+        (el) => el.textContent?.trim() === "All tokens"
+      );
+
+      if (!allTokensLabel) return;
+
+      let current = allTokensLabel.parentElement;
+
+      for (let i = 0; i < 6 && current; i++) {
+        const rect = current.getBoundingClientRect();
+
+        if (rect.height > 250 && rect.width > 300 && rect.height < 700) {
+          current.classList.add("transportal-token-scroll");
+          break;
+        }
+
+        current = current.parentElement;
+      }
+    };
+
+    const observer = new MutationObserver(applyTokenScroll);
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    applyTokenScroll();
 
     return () => {
-      document.head.removeChild(css);
+      observer.disconnect();
+      document.head.removeChild(style);
     };
   }, []);
 
