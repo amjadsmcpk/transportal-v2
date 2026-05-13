@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@mayanfinance/wormhole-sdk-route": "^1.26.0",
     "@wormhole-foundation/wormhole-connect": "^5.1.1",
     "encoding": "^0.1.13",
     "next": "14.2.35",
