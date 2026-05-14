@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import TokenSelectorScrollFix from "./TokenSelectorScrollFix";
+import AIIntentBox from "./AIIntentBox";
 
 const WormholeBridge = dynamic(() => import("./WormholeBridge"), {
   ssr: false,
@@ -15,9 +16,7 @@ const WormholeBridge = dynamic(() => import("./WormholeBridge"), {
         paddingTop: 120,
         fontSize: 18,
       }}
-    >
-      Loading TRANSPORTAL...
-    </div>
+    />
   ),
 });
 
@@ -29,11 +28,8 @@ export default function TransportalClient() {
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
-
     check();
-
     window.addEventListener("resize", check);
-
     return () => window.removeEventListener("resize", check);
   }, []);
 
@@ -66,13 +62,14 @@ export default function TransportalClient() {
   return (
     <main
       style={{
-        height: "100vh",
-        overflow: "hidden",
+        minHeight: "100vh",
         position: "relative",
         color: "white",
         fontFamily: "Arial, sans-serif",
         background:
           "linear-gradient(90deg,#181818 0%,#101010 35%,#060606 70%,#000000 100%)",
+        overflowX: "hidden",
+        paddingBottom: isMobile ? 110 : 90,
       }}
     >
       <TokenSelectorScrollFix />
@@ -228,6 +225,7 @@ export default function TransportalClient() {
           }}
         >
           <WormholeBridge activeTab={activeTab} />
+          <AIIntentBox />
         </div>
       </section>
 
