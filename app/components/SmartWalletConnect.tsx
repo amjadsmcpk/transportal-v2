@@ -2,18 +2,12 @@
 
 import { useEffect, useState } from "react";
 
-type EthereumProvider = {
+type EthereumLike = {
   request: (args: {
     method: string;
     params?: unknown[];
   }) => Promise<unknown>;
 };
-
-declare global {
-  interface Window {
-    ethereum?: EthereumProvider;
-  }
-}
 
 export default function SmartWalletConnect() {
   const [evmAddress, setEvmAddress] = useState<string>("");
@@ -31,7 +25,8 @@ export default function SmartWalletConnect() {
     setError("");
 
     try {
-      const ethereum = window.ethereum;
+      const ethereum = (window as unknown as { ethereum?: EthereumLike })
+        .ethereum;
 
       if (!ethereum) {
         setError("MetaMask or an EVM wallet is not installed.");
@@ -64,12 +59,7 @@ export default function SmartWalletConnect() {
 
   if (evmAddress) {
     return (
-      <div
-        style={{
-          display: "grid",
-          gap: 10,
-        }}
-      >
+      <div style={{ display: "grid", gap: 10 }}>
         <div
           style={{
             padding: 14,
@@ -115,12 +105,7 @@ export default function SmartWalletConnect() {
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gap: 10,
-      }}
-    >
+    <div style={{ display: "grid", gap: 10 }}>
       <button
         type="button"
         onClick={connectEvm}
