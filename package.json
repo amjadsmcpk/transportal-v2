@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@mayanfinance/swap-sdk": "^14.0.0",
     "@mayanfinance/wormhole-sdk-route": "^1.26.0",
     "@solana/wallet-adapter-base": "^0.9.27",
     "@solana/wallet-adapter-react": "^0.15.39",
