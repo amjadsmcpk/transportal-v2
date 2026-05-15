@@ -1,10 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function SmartWalletConnect() {
   const [evmAddress, setEvmAddress] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const savedWallet = localStorage.getItem("transportal_wallet");
+
+    if (savedWallet) {
+      setEvmAddress(savedWallet);
+    }
+  }, []);
 
   const connectEvm = async () => {
     setError("");
@@ -21,10 +29,23 @@ export default function SmartWalletConnect() {
         method: "eth_requestAccounts",
       })) as string[];
 
-      setEvmAddress(accounts[0] || "");
+      const wallet = accounts[0] || "";
+
+      if (!wallet) {
+        setError("No wallet address returned.");
+        return;
+      }
+
+      setEvmAddress(wallet);
+      localStorage.setItem("transportal_wallet", wallet);
     } catch {
       setError("Wallet connection was rejected.");
     }
+  };
+
+  const disconnectWallet = () => {
+    setEvmAddress("");
+    localStorage.removeItem("transportal_wallet");
   };
 
   return (
@@ -51,6 +72,23 @@ export default function SmartWalletConnect() {
           >
             {evmAddress}
           </div>
+
+          <button
+            onClick={disconnectWallet}
+            style={{
+              marginTop: 12,
+              width: "100%",
+              padding: 12,
+              borderRadius: 14,
+              border: "none",
+              background: "white",
+              color: "black",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            Disconnect wallet
+          </button>
         </div>
       ) : (
         <button
@@ -70,9 +108,7 @@ export default function SmartWalletConnect() {
         </button>
       )}
 
-      {error && (
-        <div style={{ color: "#ffb4b4", fontSize: 13 }}>{error}</div>
-      )}
+      {error && <div style={{ color: "#ffb4b4", fontSize: 13 }}>{error}</div>}
     </div>
   );
-}
+}S
