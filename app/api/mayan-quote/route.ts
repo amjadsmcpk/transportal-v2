@@ -4,7 +4,9 @@ import { fetchQuote } from "@mayanfinance/swap-sdk";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const TOKENS: Record<string, Record<string, string>> = {
+type MayanChain = "ethereum" | "solana";
+
+const TOKENS: Record<MayanChain, Record<string, string>> = {
   ethereum: {
     ETH: "0x0000000000000000000000000000000000000000",
     USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -15,8 +17,13 @@ const TOKENS: Record<string, Record<string, string>> = {
   },
 };
 
-function chainName(value: unknown) {
-  return String(value || "").toLowerCase();
+function normalizeChain(value: unknown): MayanChain | null {
+  const chain = String(value || "").toLowerCase();
+
+  if (chain.includes("eth")) return "ethereum";
+  if (chain.includes("sol")) return "solana";
+
+  return null;
 }
 
 function tokenName(value: unknown) {
@@ -30,10 +37,7 @@ function toAmountIn64(amount: unknown, token: string) {
     throw new Error("Invalid amount");
   }
 
-  const decimals =
-    token === "ETH" || token === "SOL"
-      ? 18
-      : 6;
+  const decimals = token === "ETH" || token === "SOL" ? 18 : 6;
 
   return BigInt(Math.floor(n * 10 ** decimals)).toString();
 }
@@ -42,10 +46,23 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const fromChain = chainName(body.fromChain);
-    const toChain = chainName(body.toChain);
+    const fromChain = normalizeChain(body.fromChain);
+    const toChain = normalizeChain(body.toChain);
     const fromTokenSymbol = tokenName(body.fromToken);
-    const toTokenSymbol = tokenName(body.toToken || body.toChain === "solana" ? "SOL" : body.toToken);
+
+    const toTokenSymbol =
+      body.toToken && String(body.toToken).trim()
+        ? tokenName(body.toToken)
+        : toChain === "solana"
+          ? "SOL"
+          : fromTokenSymbol;
+
+    if (!fromChain || !toChain) {
+      return NextResponse.json({
+        success: false,
+        error: "This MVP currently supports Ethereum and Solana routes only.",
+      });
+    }
 
     const fromToken = TOKENS[fromChain]?.[fromTokenSymbol];
     const toToken = TOKENS[toChain]?.[toTokenSymbol];
@@ -66,7 +83,7 @@ export async function POST(req: Request) {
       fromChain,
       toChain,
       slippageBps: "auto",
-    });
+    } as Parameters<typeof fetchQuote>[0]);
 
     const quote = quotes?.[0];
 
