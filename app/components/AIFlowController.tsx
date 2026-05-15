@@ -1,27 +1,26 @@
 "use client";
 
 import { useState } from "react";
+
 import SmartWalletConnect from "./SmartWalletConnect";
+import ExecutionStatus from "./ExecutionStatus";
+
+type Intent = {
+  fromToken?: string | null;
+  amount?: string | number | null;
+  fromChain?: string | null;
+  toToken?: string | null;
+  toChain?: string | null;
+  priority?: string | null;
+};
 
 type Plan = {
-  intent?: {
-    fromToken?: string | null;
-    amount?: string | null;
-    fromChain?: string | null;
-    toToken?: string | null;
-    toChain?: string | null;
-    priority?: string | null;
-  };
-
-  questions?: string[];
-
-  recommendedMode?: string;
-
-  recommendedRoute?: string;
-
-  safetyWarnings?: string[];
-
-  userFacingSummary?: string;
+  intent?: Intent;
+  questions?: unknown;
+  recommendedMode?: unknown;
+  recommendedRoute?: unknown;
+  safetyWarnings?: unknown;
+  userFacingSummary?: unknown;
 };
 
 export default function AIFlowController() {
@@ -33,12 +32,47 @@ export default function AIFlowController() {
 
   const [plan, setPlan] = useState<Plan | null>(null);
 
+  const [error, setError] = useState("");
+
+  const [executionStarted, setExecutionStarted] =
+    useState(false);
+
+  const toArray = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value.map(String);
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      return [value];
+    }
+
+    return [];
+  };
+
+  const text = (
+    value: unknown,
+    fallback = "-"
+  ) => {
+    if (
+      typeof value === "string" ||
+      typeof value === "number"
+    ) {
+      return String(value);
+    }
+
+    return fallback;
+  };
+
   const preparePlan = async () => {
     if (!message.trim()) return;
 
     setLoading(true);
 
     setPlan(null);
+
+    setExecutionStarted(false);
+
+    setError("");
 
     try {
       const res = await fetch("/api/intent", {
@@ -55,15 +89,32 @@ export default function AIFlowController() {
 
       const data = await res.json();
 
+      if (!data.success || !data.plan) {
+        setError(
+          data.error ||
+            "AI could not prepare a plan."
+        );
+
+        return;
+      }
+
       setPlan(data.plan);
     } catch {
-      alert("AI planning failed. Please try again.");
+      setError(
+        "AI planning failed. Please try again."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
-  const intent = plan?.intent;
+  const intent = plan?.intent || {};
+
+  const questions = toArray(plan?.questions);
+
+  const warnings = toArray(
+    plan?.safetyWarnings
+  );
 
   return (
     <div
@@ -74,9 +125,11 @@ export default function AIFlowController() {
 
         borderRadius: 28,
 
-        background: "rgba(255,255,255,0.055)",
+        background:
+          "rgba(255,255,255,0.055)",
 
-        border: "1px solid rgba(255,255,255,0.12)",
+        border:
+          "1px solid rgba(255,255,255,0.12)",
 
         color: "white",
 
@@ -97,7 +150,8 @@ export default function AIFlowController() {
 
       <p
         style={{
-          color: "rgba(255,255,255,0.68)",
+          color:
+            "rgba(255,255,255,0.68)",
 
           fontSize: 14,
 
@@ -106,13 +160,17 @@ export default function AIFlowController() {
           marginTop: 8,
         }}
       >
-        Describe your transfer naturally. TRANSPORTAL AI prepares the safest
-        cross-chain execution flow before wallet confirmation.
+        Describe your transfer naturally.
+        TRANSPORTAL AI prepares the
+        safest cross-chain execution
+        flow before wallet confirmation.
       </p>
 
       <textarea
         value={message}
-        onChange={(e) => setMessage(e.target.value)}
+        onChange={(e) =>
+          setMessage(e.target.value)
+        }
         placeholder="Example: Send 3 ETH to Solana safely"
         style={{
           width: "100%",
@@ -127,7 +185,8 @@ export default function AIFlowController() {
 
           color: "white",
 
-          border: "1px solid rgba(255,255,255,0.14)",
+          border:
+            "1px solid rgba(255,255,255,0.14)",
 
           outline: "none",
 
@@ -143,7 +202,9 @@ export default function AIFlowController() {
 
       <button
         onClick={preparePlan}
-        disabled={loading}
+        disabled={
+          loading || !message.trim()
+        }
         style={{
           marginTop: 14,
 
@@ -155,7 +216,10 @@ export default function AIFlowController() {
 
           border: "none",
 
-          background: "white",
+          background:
+            loading || !message.trim()
+              ? "#777"
+              : "white",
 
           color: "black",
 
@@ -163,13 +227,22 @@ export default function AIFlowController() {
 
           fontSize: 15,
 
-          cursor: "pointer",
+          cursor:
+            loading || !message.trim()
+              ? "not-allowed"
+              : "pointer",
         }}
       >
         {loading
           ? "AI is preparing your transfer..."
           : "Prepare Smart Transfer"}
       </button>
+
+      {error && (
+        <Card title="Error">
+          {error}
+        </Card>
+      )}
 
       {plan && (
         <div
@@ -191,9 +264,14 @@ export default function AIFlowController() {
                 lineHeight: 1.45,
               }}
             >
-              {intent?.amount || "-"} {intent?.fromToken || "-"}{" "}
-              {intent?.fromChain ? `from ${intent.fromChain}` : ""}{" "}
-              {intent?.toChain ? `to ${intent.toChain}` : ""}
+              {text(intent.amount)}{" "}
+              {text(intent.fromToken)}{" "}
+              {intent.fromChain
+                ? `from ${intent.fromChain}`
+                : ""}{" "}
+              {intent.toChain
+                ? `to ${intent.toChain}`
+                : ""}
             </div>
           </Card>
 
@@ -201,48 +279,41 @@ export default function AIFlowController() {
             style={{
               display: "grid",
 
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns:
+                "1fr 1fr",
 
               gap: 10,
             }}
           >
             <Card title="Mode">
-              {plan.recommendedMode || "Swap"}
+              {text(
+                plan.recommendedMode,
+                "Swap"
+              )}
             </Card>
 
             <Card title="Route">
-              {plan.recommendedRoute || "Mayan"}
+              {text(
+                plan.recommendedRoute,
+                "Mayan"
+              )}
             </Card>
           </div>
 
-          {plan.userFacingSummary && (
+          {typeof plan.userFacingSummary ===
+            "string" && (
             <Card title="AI Summary">
               {plan.userFacingSummary}
             </Card>
           )}
 
-          {plan.questions && plan.questions.length > 0 && (
+          {questions.length > 0 && (
             <Card title="Next steps">
-              <div
-                style={{
-                  display: "grid",
-
-                  gap: 7,
-                }}
-              >
-                {plan.questions.map((question, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      lineHeight: 1.45,
-
-                      fontSize: 14,
-                    }}
-                  >
-                    • {question}
-                  </div>
-                ))}
-              </div>
+              {questions.map((q, i) => (
+                <div key={i}>
+                  • {q}
+                </div>
+              ))}
             </Card>
           )}
 
@@ -253,7 +324,9 @@ export default function AIFlowController() {
           <Card title="Receiver address">
             <input
               value={receiver}
-              onChange={(e) => setReceiver(e.target.value)}
+              onChange={(e) =>
+                setReceiver(e.target.value)
+              }
               placeholder="Paste receiver wallet address"
               style={{
                 width: "100%",
@@ -266,7 +339,8 @@ export default function AIFlowController() {
 
                 color: "white",
 
-                border: "1px solid rgba(255,255,255,0.14)",
+                border:
+                  "1px solid rgba(255,255,255,0.14)",
 
                 boxSizing: "border-box",
 
@@ -277,33 +351,20 @@ export default function AIFlowController() {
             />
           </Card>
 
-          {plan.safetyWarnings &&
-            plan.safetyWarnings.length > 0 && (
-              <Card title="Safety warnings">
+          {warnings.length > 0 && (
+            <Card title="Safety warnings">
+              {warnings.map((w, i) => (
                 <div
+                  key={i}
                   style={{
-                    display: "grid",
-
-                    gap: 8,
+                    color: "#ffcccc",
                   }}
                 >
-                  {plan.safetyWarnings.map((warning, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        fontSize: 13,
-
-                        lineHeight: 1.5,
-
-                        color: "#ffcccc",
-                      }}
-                    >
-                      • {warning}
-                    </div>
-                  ))}
+                  • {w}
                 </div>
-              </Card>
-            )}
+              ))}
+            </Card>
+          )}
 
           {receiver && (
             <div
@@ -312,9 +373,11 @@ export default function AIFlowController() {
 
                 borderRadius: 22,
 
-                background: "rgba(255,255,255,0.08)",
+                background:
+                  "rgba(255,255,255,0.08)",
 
-                border: "1px solid rgba(255,255,255,0.16)",
+                border:
+                  "1px solid rgba(255,255,255,0.16)",
 
                 marginTop: 6,
               }}
@@ -333,19 +396,25 @@ export default function AIFlowController() {
 
               <Slip
                 label="Sending"
-                value={`${intent?.amount || "-"} ${
-                  intent?.fromToken || "-"
-                }`}
+                value={`${text(
+                  intent.amount
+                )} ${text(
+                  intent.fromToken
+                )}`}
               />
 
               <Slip
                 label="From"
-                value={intent?.fromChain || "-"}
+                value={text(
+                  intent.fromChain
+                )}
               />
 
               <Slip
                 label="To"
-                value={intent?.toChain || "-"}
+                value={text(
+                  intent.toChain
+                )}
               />
 
               <Slip
@@ -355,7 +424,10 @@ export default function AIFlowController() {
 
               <Slip
                 label="Route"
-                value={plan.recommendedRoute || "Mayan"}
+                value={text(
+                  plan.recommendedRoute,
+                  "Mayan"
+                )}
               />
 
               <Slip
@@ -365,10 +437,16 @@ export default function AIFlowController() {
 
               <Slip
                 label="Priority"
-                value={intent?.priority || "safest"}
+                value={text(
+                  intent.priority,
+                  "safest"
+                )}
               />
 
               <button
+                onClick={() =>
+                  setExecutionStarted(true)
+                }
                 style={{
                   marginTop: 18,
 
@@ -393,6 +471,28 @@ export default function AIFlowController() {
               >
                 Confirm in wallet
               </button>
+
+              {executionStarted && (
+                <ExecutionStatus
+                  amount={text(
+                    intent.amount
+                  )}
+                  fromToken={text(
+                    intent.fromToken
+                  )}
+                  fromChain={text(
+                    intent.fromChain
+                  )}
+                  toChain={text(
+                    intent.toChain
+                  )}
+                  receiver={receiver}
+                  route={text(
+                    plan.recommendedRoute,
+                    "Mayan"
+                  )}
+                />
+              )}
             </div>
           )}
         </div>
@@ -418,7 +518,10 @@ function Card({
 
         background: "#080808",
 
-        border: "1px solid rgba(255,255,255,0.09)",
+        border:
+          "1px solid rgba(255,255,255,0.09)",
+
+        marginTop: 12,
       }}
     >
       <div
@@ -461,13 +564,15 @@ function Slip({
       style={{
         display: "flex",
 
-        justifyContent: "space-between",
+        justifyContent:
+          "space-between",
 
         gap: 12,
 
         padding: "10px 0",
 
-        borderBottom: "1px solid rgba(255,255,255,0.07)",
+        borderBottom:
+          "1px solid rgba(255,255,255,0.07)",
 
         fontSize: 13,
       }}
