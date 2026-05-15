@@ -15,6 +15,7 @@ export async function POST(req: Request) {
       receiver,
       quote,
       walletAddress,
+      route,
     } = body;
 
     if (
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
     if (!quote) {
       return NextResponse.json({
         success: false,
-        error: "Missing Mayan quote.",
+        error: "Missing route quote.",
       });
     }
 
@@ -54,10 +55,11 @@ export async function POST(req: Request) {
         toChain,
         receiver,
         walletAddress,
+        route,
       },
 
       nextStep:
-        "Frontend should now open MetaMask and sign Mayan transaction.",
+        "Frontend can now request MetaMask signing.",
     });
   } catch (error) {
     const message =
