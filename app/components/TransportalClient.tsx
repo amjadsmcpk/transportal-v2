@@ -1,27 +1,11 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import TokenSelectorScrollFix from "./TokenSelectorScrollFix";
-import AIIntentBox from "./AIIntentBox";
-
-const WormholeBridge = dynamic(() => import("./WormholeBridge"), {
-  ssr: false,
-  loading: () => (
-    <div
-      style={{
-        color: "white",
-        textAlign: "center",
-        paddingTop: 120,
-        fontSize: 18,
-      }}
-    />
-  ),
-});
+import AIFlowController from "./AIFlowController";
 
 export default function TransportalClient() {
-  const [activeTab, setActiveTab] = useState<"swap" | "usdc">("swap");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [hovered, setHovered] = useState("");
@@ -29,7 +13,9 @@ export default function TransportalClient() {
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
     check();
+
     window.addEventListener("resize", check);
+
     return () => window.removeEventListener("resize", check);
   }, []);
 
@@ -116,21 +102,11 @@ export default function TransportalClient() {
         {!isMobile && (
           <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
             <button
-              onClick={() => setActiveTab("swap")}
-              onMouseEnter={() => setHovered("swap")}
+              onMouseEnter={() => setHovered("ai")}
               onMouseLeave={() => setHovered("")}
-              style={menuStyle("swap", activeTab === "swap")}
+              style={menuStyle("ai", true)}
             >
-              Swap
-            </button>
-
-            <button
-              onClick={() => setActiveTab("usdc")}
-              onMouseEnter={() => setHovered("usdc")}
-              onMouseLeave={() => setHovered("")}
-              style={menuStyle("usdc", activeTab === "usdc")}
-            >
-              USDC
+              AI Transfer
             </button>
 
             <a
@@ -177,23 +153,10 @@ export default function TransportalClient() {
             }}
           >
             <button
-              onClick={() => {
-                setActiveTab("swap");
-                setMobileMenu(false);
-              }}
-              style={menuStyle("swap", activeTab === "swap")}
+              onClick={() => setMobileMenu(false)}
+              style={menuStyle("ai", true)}
             >
-              Swap
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab("usdc");
-                setMobileMenu(false);
-              }}
-              style={menuStyle("usdc", activeTab === "usdc")}
-            >
-              USDC
+              AI Transfer
             </button>
 
             <a
@@ -213,19 +176,17 @@ export default function TransportalClient() {
           zIndex: 5,
           display: "flex",
           justifyContent: "center",
-          marginTop: isMobile ? 20 : 4,
+          marginTop: isMobile ? 20 : 8,
+          padding: isMobile ? "0 12px" : "0 20px",
         }}
       >
         <div
           style={{
-            width: isMobile ? "96vw" : 470,
-            maxWidth: "96vw",
-            transform: isMobile ? "scale(0.92)" : "scale(0.95)",
-            transformOrigin: "top center",
+            width: isMobile ? "100%" : 520,
+            maxWidth: "100%",
           }}
         >
-          <WormholeBridge activeTab={activeTab} />
-          <AIIntentBox />
+          <AIFlowController />
         </div>
       </section>
 
@@ -241,6 +202,7 @@ export default function TransportalClient() {
           alignItems: "center",
           flexWrap: "wrap",
           gap: 16,
+          pointerEvents: "auto",
         }}
       >
         <div
