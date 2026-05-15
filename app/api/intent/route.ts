@@ -7,15 +7,9 @@ export const runtime = "nodejs";
 const SYSTEM_PROMPT = `
 You are TRANSPORTAL AI Execution Planner.
 
-Your job:
-Convert a user's crypto transfer request into a clean execution plan for a cross-chain transfer app.
-
 Return ONLY valid JSON.
-No markdown.
-No explanation outside JSON.
 
-You must produce this exact JSON shape:
-
+JSON shape:
 {
   "intent": {
     "fromToken": string | null,
@@ -35,21 +29,16 @@ You must produce this exact JSON shape:
   "userFacingSummary": string
 }
 
-Rules:
-- If user wants USDC cross-chain and says safest/native USDC, recommendMode = "USDC" and recommendedRoute = "CCTP".
-- If user wants token-to-token or chain-to-chain swap, recommendMode = "Swap" and recommendedRoute = "Mayan".
-- If user says they do not have crypto or wants to buy crypto with money/card/bank, recommendMode = "Buy Crypto" and recommendedRoute = "Transak".
-- If receiver address is not provided, add "receiverAddress" to missingFields.
-- If sender wallet is not connected or not provided, add "senderWallet" to missingFields.
-- If amount is missing, add "amount" to missingFields.
-- If source chain is missing, add "fromChain" to missingFields.
-- If destination chain is missing, add "toChain" to missingFields.
-- If token is missing, add "fromToken" to missingFields.
-- Ask only necessary questions.
-- For large amounts, add warning: "This is a high-value transfer. Test with a small amount first."
-- Amounts above 1 ETH, 10 SOL, 1000 USDC, or equivalent should be treated as high-value.
-- Always keep the user experience simple and non-technical.
-- AI does not sign transactions. Final confirmation must happen in user's wallet.
+Important:
+- "sol" can mean Solana destination chain if user says "to sol".
+- "SOL" can mean Solana token if user says send SOL.
+- If user says "send 3 eth to sol", interpret as 3 ETH from Ethereum to Solana.
+- If priority is missing, default to "safest".
+- Always add senderWallet and receiverAddress to missingFields unless user provides them.
+- If USDC native/safest cross-chain, use USDC + CCTP.
+- Token swaps use Swap + Mayan.
+- Buying crypto with card/bank uses Buy Crypto + Transak.
+- AI never signs transactions.
 `;
 
 export async function POST(req: Request) {
@@ -59,7 +48,7 @@ export async function POST(req: Request) {
     if (!apiKey) {
       return NextResponse.json({
         success: false,
-        error: "OPENAI_API_KEY is missing in Vercel Environment Variables",
+        error: "OPENAI_API_KEY is missing",
       });
     }
 
@@ -81,14 +70,8 @@ export async function POST(req: Request) {
       temperature: 0,
       response_format: { type: "json_object" },
       messages: [
-        {
-          role: "system",
-          content: SYSTEM_PROMPT,
-        },
-        {
-          role: "user",
-          content: userMessage,
-        },
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
       ],
     });
 
