@@ -2,19 +2,32 @@
 
 import { useEffect, useState } from "react";
 
+type EthereumProvider = {
+  request: (args: {
+    method: string;
+    params?: unknown[];
+  }) => Promise<unknown>;
+};
+
+declare global {
+  interface Window {
+    ethereum?: EthereumProvider;
+  }
+}
+
 export default function SmartWalletConnect() {
-  const [evmAddress, setEvmAddress] = useState("");
-  const [error, setError] = useState("");
+  const [evmAddress, setEvmAddress] = useState<string>("");
+  const [error, setError] = useState<string>("");
 
   useEffect(() => {
-    const savedWallet = localStorage.getItem("transportal_wallet");
+    const savedWallet = window.localStorage.getItem("transportal_wallet");
 
     if (savedWallet) {
       setEvmAddress(savedWallet);
     }
   }, []);
 
-  const connectEvm = async () => {
+  async function connectEvm() {
     setError("");
 
     try {
@@ -25,11 +38,12 @@ export default function SmartWalletConnect() {
         return;
       }
 
-      const accounts = (await ethereum.request({
+      const response = await ethereum.request({
         method: "eth_requestAccounts",
-      })) as string[];
+      });
 
-      const wallet = accounts[0] || "";
+      const accounts = Array.isArray(response) ? response : [];
+      const wallet = typeof accounts[0] === "string" ? accounts[0] : "";
 
       if (!wallet) {
         setError("No wallet address returned.");
@@ -37,20 +51,25 @@ export default function SmartWalletConnect() {
       }
 
       setEvmAddress(wallet);
-      localStorage.setItem("transportal_wallet", wallet);
+      window.localStorage.setItem("transportal_wallet", wallet);
     } catch {
       setError("Wallet connection was rejected.");
     }
-  };
+  }
 
-  const disconnectWallet = () => {
+  function disconnectWallet() {
     setEvmAddress("");
-    localStorage.removeItem("transportal_wallet");
-  };
+    window.localStorage.removeItem("transportal_wallet");
+  }
 
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      {evmAddress ? (
+  if (evmAddress) {
+    return (
+      <div
+        style={{
+          display: "grid",
+          gap: 10,
+        }}
+      >
         <div
           style={{
             padding: 14,
@@ -74,6 +93,7 @@ export default function SmartWalletConnect() {
           </div>
 
           <button
+            type="button"
             onClick={disconnectWallet}
             style={{
               marginTop: 12,
@@ -90,25 +110,37 @@ export default function SmartWalletConnect() {
             Disconnect wallet
           </button>
         </div>
-      ) : (
-        <button
-          onClick={connectEvm}
-          style={{
-            width: "100%",
-            padding: 14,
-            borderRadius: 16,
-            border: "none",
-            background: "white",
-            color: "black",
-            fontWeight: 800,
-            cursor: "pointer",
-          }}
-        >
-          Connect MetaMask / EVM Wallet
-        </button>
-      )}
+      </div>
+    );
+  }
 
-      {error && <div style={{ color: "#ffb4b4", fontSize: 13 }}>{error}</div>}
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 10,
+      }}
+    >
+      <button
+        type="button"
+        onClick={connectEvm}
+        style={{
+          width: "100%",
+          padding: 14,
+          borderRadius: 16,
+          border: "none",
+          background: "white",
+          color: "black",
+          fontWeight: 800,
+          cursor: "pointer",
+        }}
+      >
+        Connect MetaMask / EVM Wallet
+      </button>
+
+      {error ? (
+        <div style={{ color: "#ffb4b4", fontSize: 13 }}>{error}</div>
+      ) : null}
     </div>
   );
-}S
+}
