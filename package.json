@@ -11,6 +11,8 @@
   "dependencies": {
     "@mayanfinance/swap-sdk": "^14.0.0",
     "@mayanfinance/wormhole-sdk-route": "^1.26.0",
+    "@reown/appkit": "^1.8.19",
+    "@reown/appkit-adapter-ethers": "^1.8.19",
     "@solana/wallet-adapter-base": "^0.9.27",
     "@solana/wallet-adapter-react": "^0.15.39",
     "@solana/wallet-adapter-react-ui": "^0.9.39",
