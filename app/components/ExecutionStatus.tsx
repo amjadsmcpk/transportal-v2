@@ -25,7 +25,6 @@ type ExecutionState = {
   loading: boolean;
   success: boolean;
   error: string;
-  plan: Record<string, unknown> | null;
 };
 
 type SignState = {
@@ -42,6 +41,15 @@ type SwapState = {
   error: string;
   wallet: string;
   status: string;
+  txHash: string;
+};
+
+type TrackingState = {
+  loading: boolean;
+  status: string;
+  completed: boolean;
+  refunded: boolean;
+  error: string;
 };
 
 export default function ExecutionStatus({
@@ -65,7 +73,6 @@ export default function ExecutionStatus({
       loading: false,
       success: false,
       error: "",
-      plan: null,
     });
 
   const [signState, setSignState] =
@@ -84,28 +91,29 @@ export default function ExecutionStatus({
       error: "",
       wallet: "",
       status: "",
+      txHash: "",
+    });
+
+  const [trackingState, setTrackingState] =
+    useState<TrackingState>({
+      loading: false,
+      status: "",
+      completed: false,
+      refunded: false,
+      error: "",
     });
 
   useEffect(() => {
     const prepareExecution = async () => {
-      setQuoteState({
-        loading: true,
-        success: false,
-        error: "",
-        quote: null,
-      });
-
       try {
         const quoteRes = await fetch(
           "/api/mayan-quote",
           {
             method: "POST",
-
             headers: {
               "Content-Type":
                 "application/json",
             },
-
             body: JSON.stringify({
               amount,
               fromToken,
@@ -148,34 +156,23 @@ export default function ExecutionStatus({
           loading: true,
           success: false,
           error: "",
-          plan: null,
         });
-
-        const walletAddress =
-          typeof window !== "undefined"
-            ? window.localStorage.getItem(
-                "transportal_wallet"
-              ) || ""
-            : "";
 
         const executionRes =
           await fetch(
             "/api/execute-transfer",
             {
               method: "POST",
-
               headers: {
                 "Content-Type":
                   "application/json",
               },
-
               body: JSON.stringify({
                 amount,
                 fromToken,
                 fromChain,
                 toChain,
                 receiver,
-                walletAddress,
                 route,
                 quote: quoteData.quote,
               }),
@@ -192,7 +189,6 @@ export default function ExecutionStatus({
             error:
               executionData.error ||
               "Execution preparation failed.",
-            plan: null,
           });
 
           return;
@@ -202,8 +198,6 @@ export default function ExecutionStatus({
           loading: false,
           success: true,
           error: "",
-          plan:
-            executionData.executionPlan,
         });
       } catch {
         setQuoteState({
@@ -226,17 +220,106 @@ export default function ExecutionStatus({
     route,
   ]);
 
+  useEffect(() => {
+    if (!swapState.txHash) {
+      return;
+    }
+
+    const pollStatus = async () => {
+      try {
+        setTrackingState((prev) => ({
+          ...prev,
+          loading: true,
+        }));
+
+        const res = await fetch(
+          "/api/mayan-status",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              txHash: swapState.txHash,
+            }),
+          }
+        );
+
+        const data = await res.json();
+
+        if (!data.success) {
+          setTrackingState({
+            loading: false,
+            status: "",
+            completed: false,
+            refunded: false,
+            error:
+              data.error ||
+              "Status polling failed.",
+          });
+
+          return;
+        }
+
+        const status =
+          typeof data.clientStatus ===
+          "string"
+            ? data.clientStatus
+            : "UNKNOWN";
+
+        setTrackingState({
+          loading: false,
+          status,
+          completed:
+            status === "COMPLETED",
+          refunded:
+            status === "REFUNDED",
+          error: "",
+        });
+
+        if (
+          status === "COMPLETED" ||
+          status === "REFUNDED"
+        ) {
+          clearInterval(intervalId);
+        }
+      } catch {
+        setTrackingState({
+          loading: false,
+          status: "",
+          completed: false,
+          refunded: false,
+          error:
+            "Failed to poll Mayan status.",
+        });
+      }
+    };
+
+    pollStatus();
+
+    const intervalId: NodeJS.Timeout =
+      setInterval(
+        pollStatus,
+        6000
+      );
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [swapState.txHash]);
+
   const requestWalletSignature =
     async () => {
-      setSignState({
-        loading: true,
-        success: false,
-        error: "",
-        wallet: "",
-        signature: "",
-      });
-
       try {
+        setSignState({
+          loading: true,
+          success: false,
+          error: "",
+          wallet: "",
+          signature: "",
+        });
+
         const { signer, address } =
           await getEvmSigner();
 
@@ -281,38 +364,32 @@ export default function ExecutionStatus({
   const startMayanExecution =
     async () => {
       if (!quoteState.quote) {
-        setSwapState({
-          loading: false,
-          success: false,
-          error:
-            "Missing Mayan quote.",
-          wallet: "",
-          status: "",
-        });
-
         return;
       }
 
-      setSwapState({
-        loading: true,
-        success: false,
-        error: "",
-        wallet: "",
-        status: "",
-      });
-
       try {
+        setSwapState({
+          loading: true,
+          success: false,
+          error: "",
+          wallet: "",
+          status: "",
+          txHash: "",
+        });
+
         const result =
           await executeMayanEvmSwap({
-  quote: quoteState.quote,
-  receiver,
-});
+            quote: quoteState.quote,
+            receiver,
+          });
+
         setSwapState({
           loading: false,
           success: true,
           error: "",
           wallet: result.wallet,
           status: result.status,
+          txHash: result.txHash,
         });
       } catch (error) {
         const message =
@@ -326,9 +403,15 @@ export default function ExecutionStatus({
           error: message,
           wallet: "",
           status: "",
+          txHash: "",
         });
       }
     };
+
+  const explorerUrl =
+    swapState.txHash
+      ? `https://etherscan.io/tx/${swapState.txHash}`
+      : "";
 
   return (
     <div
@@ -338,93 +421,50 @@ export default function ExecutionStatus({
         borderRadius: 18,
         background:
           "rgba(80,255,140,0.08)",
-
         border:
           "1px solid rgba(80,255,140,0.22)",
-
         color: "white",
       }}
     >
-      <Title>
+      <h3>
         Real execution engine
-      </Title>
-
-      <Text>
-        TRANSPORTAL AI is preparing a
-        real Mayan execution flow.
-      </Text>
-
-      <InfoCard>
-        <div>
-          <strong>Route:</strong>{" "}
-          {route}
-        </div>
-
-        <div>
-          <strong>Sending:</strong>{" "}
-          {amount} {fromToken}
-        </div>
-
-        <div>
-          <strong>From:</strong>{" "}
-          {fromChain}
-        </div>
-
-        <div>
-          <strong>To:</strong> {toChain}
-        </div>
-
-        <div
-          style={{
-            overflowWrap: "anywhere",
-          }}
-        >
-          <strong>Receiver:</strong>{" "}
-          {receiver}
-        </div>
-      </InfoCard>
+      </h3>
 
       {quoteState.loading && (
-        <Box>
-          Checking live Mayan route...
-        </Box>
+        <StatusBox>
+          Checking Mayan route...
+        </StatusBox>
       )}
 
-      {!quoteState.loading &&
-        quoteState.error && (
-          <ErrorBox>
-            {quoteState.error}
-          </ErrorBox>
-        )}
+      {quoteState.success && (
+        <SuccessBox>
+          Route found ✅
+        </SuccessBox>
+      )}
 
-      {!quoteState.loading &&
-        quoteState.success && (
-          <SuccessBox title="Route found ✅">
-            Live Mayan route is
-            available.
-          </SuccessBox>
-        )}
+      {quoteState.error && (
+        <ErrorBox>
+          {quoteState.error}
+        </ErrorBox>
+      )}
 
       {executionState.loading && (
-        <Box>
-          Preparing execution flow...
-        </Box>
+        <StatusBox>
+          Preparing execution...
+        </StatusBox>
       )}
 
-      {!executionState.loading &&
-        executionState.error && (
-          <ErrorBox>
-            {executionState.error}
-          </ErrorBox>
-        )}
+      {executionState.success && (
+        <SuccessBox>
+          Execution prepared ✅
+        </SuccessBox>
+      )}
 
-      {!executionState.loading &&
-        executionState.success && (
-          <SuccessBox title="Execution prepared ✅">
-            TRANSPORTAL AI prepared
-            execution successfully.
-          </SuccessBox>
-        )}
+      {executionState.error && (
+        <ErrorBox>
+          {executionState.error}
+        </ErrorBox>
+      )}
 
       {executionState.success && (
         <button
@@ -432,64 +472,35 @@ export default function ExecutionStatus({
           onClick={
             requestWalletSignature
           }
-          disabled={signState.loading}
           style={buttonStyle}
         >
-          {signState.loading
-            ? "Opening MetaMask..."
-            : "Open MetaMask Signature"}
+          Open MetaMask Signature
         </button>
       )}
 
-      {signState.error && (
-        <ErrorBox>
-          {signState.error}
-        </ErrorBox>
-      )}
-
       {signState.success && (
-        <SuccessBox title="Wallet signature received ✅">
-          <div
-            style={{
-              overflowWrap:
-                "anywhere",
-            }}
-          >
-            <strong>Wallet:</strong>{" "}
-            {signState.wallet}
-          </div>
-
-          <div
-            style={{
-              marginTop: 8,
-              overflowWrap:
-                "anywhere",
-            }}
-          >
-            <strong>Signature:</strong>{" "}
-            {signState.signature.slice(
-              0,
-              42
-            )}
-            ...
-          </div>
+        <SuccessBox>
+          Wallet signature received ✅
 
           <button
             type="button"
             onClick={
               startMayanExecution
             }
-            disabled={swapState.loading}
             style={{
               ...buttonStyle,
               marginTop: 14,
             }}
           >
-            {swapState.loading
-              ? "Preparing Mayan execution..."
-              : "Start Mayan Execution"}
+            Start Mayan Execution
           </button>
         </SuccessBox>
+      )}
+
+      {swapState.loading && (
+        <StatusBox>
+          Broadcasting transaction...
+        </StatusBox>
       )}
 
       {swapState.error && (
@@ -499,97 +510,80 @@ export default function ExecutionStatus({
       )}
 
       {swapState.success && (
-        <SuccessBox title="Mayan execution layer ready ✅">
-          <div>
-            <strong>Wallet:</strong>{" "}
-            {swapState.wallet}
-          </div>
-
-          <div
-            style={{
-              marginTop: 8,
-            }}
-          >
-            {swapState.status}
-          </div>
+        <SuccessBox>
+          Transaction submitted ✅
 
           <div
             style={{
               marginTop: 10,
-              color:
-                "rgba(255,255,255,0.82)",
+              overflowWrap:
+                "anywhere",
             }}
           >
-            Next step: connect the
-            real Mayan SDK swap
-            broadcast transaction.
+            {swapState.txHash}
           </div>
+
+          <a
+            href={explorerUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "block",
+              marginTop: 12,
+              textAlign: "center",
+              textDecoration:
+                "none",
+              padding: 12,
+              borderRadius: 14,
+              background: "white",
+              color: "black",
+              fontWeight: 900,
+            }}
+          >
+            View on Etherscan
+          </a>
         </SuccessBox>
+      )}
+
+      {trackingState.loading && (
+        <StatusBox>
+          Polling Mayan status...
+        </StatusBox>
+      )}
+
+      {trackingState.status && (
+        <StatusBox>
+          Cross-chain status:
+          <br />
+          <strong>
+            {trackingState.status}
+          </strong>
+        </StatusBox>
+      )}
+
+      {trackingState.completed && (
+        <SuccessBox>
+          Cross-chain transfer
+          completed ✅
+        </SuccessBox>
+      )}
+
+      {trackingState.refunded && (
+        <ErrorBox>
+          Transfer refunded.
+        </ErrorBox>
+      )}
+
+      {trackingState.error && (
+        <ErrorBox>
+          {trackingState.error}
+        </ErrorBox>
       )}
     </div>
   );
 }
 
-function Title({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        fontSize: 15,
-        fontWeight: 900,
-        marginBottom: 10,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Text({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        fontSize: 13,
-        lineHeight: 1.6,
-        color: "#d8ffd8",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function InfoCard({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        marginTop: 12,
-        padding: 12,
-        borderRadius: 14,
-        background: "#070707",
-        border:
-          "1px solid rgba(255,255,255,0.08)",
-        fontSize: 13,
-        lineHeight: 1.7,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Box({
+function StatusBox({
   children,
 }: {
   children: React.ReactNode;
@@ -602,7 +596,6 @@ function Box({
         borderRadius: 14,
         background:
           "rgba(255,255,255,0.07)",
-        fontSize: 13,
       }}
     >
       {children}
@@ -623,11 +616,7 @@ function ErrorBox({
         borderRadius: 14,
         background:
           "rgba(255,80,80,0.12)",
-        border:
-          "1px solid rgba(255,80,80,0.25)",
         color: "#ffb4b4",
-        fontSize: 13,
-        lineHeight: 1.55,
       }}
     >
       {children}
@@ -636,10 +625,8 @@ function ErrorBox({
 }
 
 function SuccessBox({
-  title,
   children,
 }: {
-  title: string;
   children: React.ReactNode;
 }) {
   return (
@@ -650,21 +637,8 @@ function SuccessBox({
         borderRadius: 14,
         background:
           "rgba(80,255,140,0.10)",
-        border:
-          "1px solid rgba(80,255,140,0.22)",
-        fontSize: 13,
-        lineHeight: 1.65,
       }}
     >
-      <div
-        style={{
-          fontWeight: 900,
-          marginBottom: 6,
-        }}
-      >
-        {title}
-      </div>
-
       {children}
     </div>
   );
