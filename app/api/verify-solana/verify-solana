@@ -1,0 +1,56 @@
+import { NextResponse } from "next/server";
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+const SOLANA_RPC =
+  process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const address =
+      typeof body.address === "string" ? body.address.trim() : "";
+
+    if (!address) {
+      return NextResponse.json({
+        success: false,
+        error: "Solana wallet address is required.",
+      });
+    }
+
+    let publicKey: PublicKey;
+
+    try {
+      publicKey = new PublicKey(address);
+    } catch {
+      return NextResponse.json({
+        success: false,
+        error: "Invalid Solana wallet address.",
+      });
+    }
+
+    const connection = new Connection(SOLANA_RPC, "confirmed");
+    const lamports = await connection.getBalance(publicKey, "confirmed");
+    const solBalance = lamports / LAMPORTS_PER_SOL;
+
+    return NextResponse.json({
+      success: true,
+      address,
+      lamports,
+      solBalance,
+      verified: lamports > 0,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Solana verification failed.";
+
+    return NextResponse.json({
+      success: false,
+      error: message,
+    });
+  }
+}
