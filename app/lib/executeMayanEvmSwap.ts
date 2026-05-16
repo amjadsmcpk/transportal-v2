@@ -4,6 +4,7 @@ import { BrowserProvider, TransactionRequest } from "ethers";
 import { getSwapFromEvmTxPayload } from "@mayanfinance/swap-sdk";
 
 type MayanQuote = Parameters<typeof getSwapFromEvmTxPayload>[0];
+type ReferrerAddresses = Parameters<typeof getSwapFromEvmTxPayload>[3];
 
 type ExecuteSwapParams = {
   quote: unknown;
@@ -48,12 +49,13 @@ export async function executeMayanEvmSwap({
   const chainId = Number(network.chainId);
 
   const mayanQuote = quote as MayanQuote;
+  const referrerAddresses = {} as ReferrerAddresses;
 
   const payload = (await getSwapFromEvmTxPayload(
     mayanQuote,
     wallet,
     receiver,
-    [],
+    referrerAddresses,
     wallet,
     chainId,
     null,
