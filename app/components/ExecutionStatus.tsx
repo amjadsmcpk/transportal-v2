@@ -304,9 +304,9 @@ export default function ExecutionStatus({
       try {
         const result =
           await executeMayanEvmSwap({
-            quote: quoteState.quote,
-          });
-
+  quote: quoteState.quote,
+  receiver,
+});
         setSwapState({
           loading: false,
           success: true,
