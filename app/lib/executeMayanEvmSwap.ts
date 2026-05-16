@@ -1,16 +1,12 @@
 "use client";
 
-import {
-  BrowserProvider,
-  TransactionRequest,
-} from "ethers";
+import { BrowserProvider, TransactionRequest } from "ethers";
+import { getSwapFromEvmTxPayload } from "@mayanfinance/swap-sdk";
 
-import {
-  getSwapFromEvmTxPayload,
-} from "@mayanfinance/swap-sdk";
+type MayanQuote = Parameters<typeof getSwapFromEvmTxPayload>[0];
 
 type ExecuteSwapParams = {
-  quote: Record<string, unknown>;
+  quote: unknown;
   receiver: string;
 };
 
@@ -51,8 +47,10 @@ export async function executeMayanEvmSwap({
   const network = await provider.getNetwork();
   const chainId = Number(network.chainId);
 
+  const mayanQuote = quote as MayanQuote;
+
   const payload = (await getSwapFromEvmTxPayload(
-    quote,
+    mayanQuote,
     wallet,
     receiver,
     [],
