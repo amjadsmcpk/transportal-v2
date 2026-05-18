@@ -1,16 +1,8 @@
-declare global {
-  interface Window {
-    ethereum?: {
-      request: (args: {
-        method: string;
-        params?: unknown[];
-      }) => Promise<unknown>;
-    };
-  }
-}
-
 export async function switchEvmChain(chainId: number) {
-  if (!window.ethereum) {
+  if (
+    typeof window === "undefined" ||
+    !window.ethereum
+  ) {
     throw new Error("MetaMask not detected.");
   }
 
