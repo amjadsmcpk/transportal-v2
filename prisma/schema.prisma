@@ -1,11 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
 }
-
 model Transaction {
   id              String   @id @default(cuid())
   createdAt       DateTime @default(now())
