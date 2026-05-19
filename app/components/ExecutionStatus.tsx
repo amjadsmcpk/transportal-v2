@@ -144,6 +144,34 @@ export default function ExecutionStatus({
     error: "",
   });
 
+  const saveTransaction = async (payload: Record<string, unknown>) => {
+    try {
+      await fetch("/api/transactions/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // Do not block execution if DB save fails.
+    }
+  };
+
+  const updateTransaction = async (payload: Record<string, unknown>) => {
+    try {
+      await fetch("/api/transactions/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // Do not block tracking if DB update fails.
+    }
+  };
+
   useEffect(() => {
     const prepareExecution = async () => {
       try {
@@ -281,6 +309,11 @@ export default function ExecutionStatus({
             error: verifyData.error || "Destination verification failed.",
           });
 
+          await updateTransaction({
+            txHash: swapState.txHash,
+            errorMessage: verifyData.error || "Destination verification failed.",
+          });
+
           return;
         }
 
@@ -296,6 +329,11 @@ export default function ExecutionStatus({
           verified: false,
           balance: "",
           error: "Failed to verify destination wallet.",
+        });
+
+        await updateTransaction({
+          txHash: swapState.txHash,
+          errorMessage: "Failed to verify destination wallet.",
         });
       }
     };
@@ -332,6 +370,12 @@ export default function ExecutionStatus({
             error: data.error || "Status polling failed.",
           });
 
+          await updateTransaction({
+            txHash: swapState.txHash,
+            status: "status_error",
+            errorMessage: data.error || "Status polling failed.",
+          });
+
           return;
         }
 
@@ -351,6 +395,13 @@ export default function ExecutionStatus({
           error: "",
         });
 
+        await updateTransaction({
+          txHash: swapState.txHash,
+          status,
+          completed,
+          refunded,
+        });
+
         if (completed) {
           stopped = true;
           await verifyDestination();
@@ -367,6 +418,12 @@ export default function ExecutionStatus({
           refunded: false,
           error: "Failed to poll Mayan status.",
         });
+
+        await updateTransaction({
+          txHash: swapState.txHash,
+          status: "polling_error",
+          errorMessage: "Failed to poll Mayan status.",
+        });
       }
     };
 
@@ -382,8 +439,7 @@ export default function ExecutionStatus({
     };
   }, [swapState.txHash, receiver, toChain]);
 
-  const unsafeExecution =
-    !gasState.safe || !slippageState.safe;
+  const unsafeExecution = !gasState.safe || !slippageState.safe;
 
   const requestWalletSignature = async () => {
     if (unsafeExecution) {
@@ -422,9 +478,7 @@ export default function ExecutionStatus({
       });
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "Wallet signature failed.";
+        error instanceof Error ? error.message : "Wallet signature failed.";
 
       setSignState({
         loading: false,
@@ -456,6 +510,8 @@ export default function ExecutionStatus({
         receiver,
       });
 
+      const explorerUrlForTx = `https://etherscan.io/tx/${result.txHash}`;
+
       setSwapState({
         loading: false,
         success: true,
@@ -464,11 +520,24 @@ export default function ExecutionStatus({
         status: result.status,
         txHash: result.txHash,
       });
+
+      await saveTransaction({
+        wallet: result.wallet,
+        receiver,
+        fromChain,
+        toChain,
+        fromToken,
+        amount,
+        route,
+        txHash: result.txHash,
+        status: result.status || "submitted",
+        explorerUrl: explorerUrlForTx,
+        gasGwei: gasState.gasGwei,
+        slippagePercent: slippageState.percent,
+      });
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "Mayan execution failed.";
+        error instanceof Error ? error.message : "Mayan execution failed.";
 
       setSwapState({
         loading: false,
@@ -498,26 +567,14 @@ export default function ExecutionStatus({
     >
       <h3>Real execution engine</h3>
 
-      {quoteState.loading && (
-        <StatusBox>
-          Checking Mayan route...
-        </StatusBox>
-      )}
+      {quoteState.loading && <StatusBox>Checking Mayan route...</StatusBox>}
 
-      {quoteState.success && (
-        <SuccessBox>
-          Route found ✅
-        </SuccessBox>
-      )}
+      {quoteState.success && <SuccessBox>Route found ✅</SuccessBox>}
 
-      {quoteState.error && (
-        <ErrorBox>
-          {quoteState.error}
-        </ErrorBox>
-      )}
+      {quoteState.error && <ErrorBox>{quoteState.error}</ErrorBox>}
 
-      {gasState.message && (
-        gasState.safe ? (
+      {gasState.message &&
+        (gasState.safe ? (
           <SuccessBox>
             Gas: {gasState.gasGwei} GWEI
             <br />
@@ -529,11 +586,10 @@ export default function ExecutionStatus({
             <br />
             {gasState.message}
           </ErrorBox>
-        )
-      )}
+        ))}
 
-      {slippageState.message && (
-        slippageState.safe ? (
+      {slippageState.message &&
+        (slippageState.safe ? (
           <SuccessBox>
             Slippage: {slippageState.percent}%
             <br />
@@ -545,13 +601,10 @@ export default function ExecutionStatus({
             <br />
             {slippageState.message}
           </ErrorBox>
-        )
-      )}
+        ))}
 
       {unsafeExecution && (
-        <ErrorBox>
-          TRANSPORTAL blocked this transaction for safety.
-        </ErrorBox>
+        <ErrorBox>TRANSPORTAL blocked this transaction for safety.</ErrorBox>
       )}
 
       {executionState.success && !unsafeExecution && (
@@ -567,7 +620,6 @@ export default function ExecutionStatus({
       {signState.success && (
         <SuccessBox>
           Wallet signature received ✅
-
           <button
             type="button"
             onClick={startMayanExecution}
@@ -581,22 +633,13 @@ export default function ExecutionStatus({
         </SuccessBox>
       )}
 
-      {swapState.loading && (
-        <StatusBox>
-          Broadcasting transaction...
-        </StatusBox>
-      )}
+      {swapState.loading && <StatusBox>Broadcasting transaction...</StatusBox>}
 
-      {swapState.error && (
-        <ErrorBox>
-          {swapState.error}
-        </ErrorBox>
-      )}
+      {swapState.error && <ErrorBox>{swapState.error}</ErrorBox>}
 
       {swapState.success && (
         <SuccessBox>
           Transaction submitted ✅
-
           <div
             style={{
               marginTop: 10,
@@ -627,11 +670,7 @@ export default function ExecutionStatus({
         </SuccessBox>
       )}
 
-      {trackingState.loading && (
-        <StatusBox>
-          Polling Mayan status...
-        </StatusBox>
-      )}
+      {trackingState.loading && <StatusBox>Polling Mayan status...</StatusBox>}
 
       {trackingState.status && (
         <StatusBox>
@@ -642,27 +681,15 @@ export default function ExecutionStatus({
       )}
 
       {trackingState.completed && (
-        <SuccessBox>
-          Cross-chain transfer completed ✅
-        </SuccessBox>
+        <SuccessBox>Cross-chain transfer completed ✅</SuccessBox>
       )}
 
-      {trackingState.refunded && (
-        <ErrorBox>
-          Transfer refunded.
-        </ErrorBox>
-      )}
+      {trackingState.refunded && <ErrorBox>Transfer refunded.</ErrorBox>}
 
-      {trackingState.error && (
-        <ErrorBox>
-          {trackingState.error}
-        </ErrorBox>
-      )}
+      {trackingState.error && <ErrorBox>{trackingState.error}</ErrorBox>}
 
       {destinationState.loading && (
-        <StatusBox>
-          Verifying destination wallet on Solana...
-        </StatusBox>
+        <StatusBox>Verifying destination wallet on Solana...</StatusBox>
       )}
 
       {destinationState.verified && (
@@ -674,20 +701,12 @@ export default function ExecutionStatus({
         </SuccessBox>
       )}
 
-      {destinationState.error && (
-        <ErrorBox>
-          {destinationState.error}
-        </ErrorBox>
-      )}
+      {destinationState.error && <ErrorBox>{destinationState.error}</ErrorBox>}
     </div>
   );
 }
 
-function StatusBox({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function StatusBox({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
@@ -702,11 +721,7 @@ function StatusBox({
   );
 }
 
-function ErrorBox({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function ErrorBox({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
@@ -722,11 +737,7 @@ function ErrorBox({
   );
 }
 
-function SuccessBox({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function SuccessBox({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
@@ -748,7 +759,7 @@ const buttonStyle = {
   borderRadius: 16,
   border: "none",
   background: "white",
- color: "black",
+  color: "black",
   fontWeight: 900,
   cursor: "pointer",
 } as const;
