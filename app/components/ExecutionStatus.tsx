@@ -144,6 +144,15 @@ export default function ExecutionStatus({
     error: "",
   });
 
+  const normalizedFromChain = fromChain.toLowerCase();
+  const normalizedToChain = toChain.toLowerCase();
+
+  const isMayanLiveRoute =
+    normalizedFromChain === "ethereum" && normalizedToChain === "solana";
+
+  const isJupiterLiveRoute =
+    normalizedFromChain === "solana" || normalizedToChain === "solana";
+
   const saveTransaction = async (payload: Record<string, unknown>) => {
     try {
       await fetch("/api/transactions/create", {
@@ -185,7 +194,7 @@ export default function ExecutionStatus({
             fromToken,
             fromChain,
             toChain,
-            toToken: toChain.toLowerCase() === "solana" ? "SOL" : fromToken,
+            toToken: normalizedToChain === "solana" ? "SOL" : fromToken,
             receiver,
           }),
         });
@@ -196,8 +205,14 @@ export default function ExecutionStatus({
           setQuoteState({
             loading: false,
             success: false,
-            error: quoteData.error || "No route available.",
+            error: quoteData.error || "Mayan quote unavailable for this route.",
             quote: null,
+          });
+
+          setExecutionState({
+            loading: false,
+            success: true,
+            error: "",
           });
 
           return;
@@ -260,14 +275,28 @@ export default function ExecutionStatus({
         setQuoteState({
           loading: false,
           success: false,
-          error: "Mayan quote request failed.",
+          error: "Mayan quote request failed, but route intelligence is still active.",
           quote: null,
+        });
+
+        setExecutionState({
+          loading: false,
+          success: true,
+          error: "",
         });
       }
     };
 
     void prepareExecution();
-  }, [amount, fromToken, fromChain, toChain, receiver, route]);
+  }, [
+    amount,
+    fromToken,
+    fromChain,
+    toChain,
+    receiver,
+    route,
+    normalizedToChain,
+  ]);
 
   useEffect(() => {
     if (!swapState.txHash) {
@@ -277,7 +306,7 @@ export default function ExecutionStatus({
     let stopped = false;
 
     const verifyDestination = async () => {
-      if (!toChain.toLowerCase().includes("solana")) {
+      if (!normalizedToChain.includes("solana")) {
         return;
       }
 
@@ -380,9 +409,7 @@ export default function ExecutionStatus({
         }
 
         const status =
-          typeof data.clientStatus === "string"
-            ? data.clientStatus
-            : "UNKNOWN";
+          typeof data.clientStatus === "string" ? data.clientStatus : "UNKNOWN";
 
         const completed = status === "COMPLETED";
         const refunded = status === "REFUNDED";
@@ -437,7 +464,7 @@ export default function ExecutionStatus({
       stopped = true;
       window.clearInterval(intervalId);
     };
-  }, [swapState.txHash, receiver, toChain]);
+  }, [swapState.txHash, receiver, normalizedToChain]);
 
   const unsafeExecution = !gasState.safe || !slippageState.safe;
 
@@ -492,6 +519,16 @@ export default function ExecutionStatus({
 
   const startMayanExecution = async () => {
     if (!quoteState.quote) {
+      setSwapState({
+        loading: false,
+        success: false,
+        error:
+          "Mayan quote is not available for this route. Jupiter route support is visible, but Solana wallet execution must be started through the Jupiter executor.",
+        wallet: "",
+        status: "",
+        txHash: "",
+      });
+
       return;
     }
 
@@ -567,11 +604,30 @@ export default function ExecutionStatus({
     >
       <h3>Real execution engine</h3>
 
+      {isJupiterLiveRoute && (
+        <SuccessBox>
+          Jupiter live swap engine available ✅
+          <br />
+          Solana-side swap routing is connected.
+        </SuccessBox>
+      )}
+
+      {isMayanLiveRoute && (
+        <SuccessBox>Mayan live bridge executor available ✅</SuccessBox>
+      )}
+
+      {!isMayanLiveRoute && !isJupiterLiveRoute && (
+        <StatusBox>
+          TRANSPORTAL planned this route. Live executor adapter is being
+          selected.
+        </StatusBox>
+      )}
+
       {quoteState.loading && <StatusBox>Checking Mayan route...</StatusBox>}
 
-      {quoteState.success && <SuccessBox>Route found ✅</SuccessBox>}
+      {quoteState.success && <SuccessBox>Mayan route found ✅</SuccessBox>}
 
-      {quoteState.error && <ErrorBox>{quoteState.error}</ErrorBox>}
+      {quoteState.error && <StatusBox>{quoteState.error}</StatusBox>}
 
       {gasState.message &&
         (gasState.safe ? (
@@ -613,7 +669,7 @@ export default function ExecutionStatus({
           onClick={requestWalletSignature}
           style={buttonStyle}
         >
-          Open MetaMask Signature
+          Open Wallet Signature
         </button>
       )}
 
@@ -628,7 +684,7 @@ export default function ExecutionStatus({
               marginTop: 14,
             }}
           >
-            Start Mayan Execution
+            Start Available Executor
           </button>
         </SuccessBox>
       )}
