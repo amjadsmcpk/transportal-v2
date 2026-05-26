@@ -115,16 +115,25 @@ export default function AIFlowController() {
       const chainsData = await chainsRes.json();
 
       if (chainsData.success && chainsData.chains) {
-        setChains(chainsData.chains);
-      }
+  setChains(Object.values(chainsData.chains));
+}
 
       const tokensRes = await fetch("/api/tokens");
 
       const tokensData = await tokensRes.json();
 
       if (tokensData.success && tokensData.tokens) {
-        setTokens(tokensData.tokens);
-      }
+  const tokenGroups = Object.values(tokensData.tokens) as Record<
+    string,
+    TokenItem
+  >[];
+
+  const flatTokens = tokenGroups.flatMap((group) =>
+    Object.values(group)
+  );
+
+  setTokens(flatTokens);
+}
     } catch {
       console.error("Failed to load dynamic data");
     } finally {
