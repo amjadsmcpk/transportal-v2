@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import SmartWalletConnect from "./SmartWalletConnect";
 import ExecutionStatus from "./ExecutionStatus";
@@ -23,6 +23,14 @@ type Plan = {
   userFacingSummary?: unknown;
 };
 
+type ChainItem = {
+  name: string;
+};
+
+type TokenItem = {
+  symbol: string;
+};
+
 export default function AIFlowController() {
   const [message, setMessage] = useState("");
 
@@ -36,6 +44,37 @@ export default function AIFlowController() {
 
   const [executionStarted, setExecutionStarted] =
     useState(false);
+
+  /*
+    DYNAMIC INTELLIGENCE
+  */
+
+  const [chains, setChains] = useState<ChainItem[]>([]);
+
+  const [tokens, setTokens] = useState<TokenItem[]>([]);
+
+  const [dynamicLoading, setDynamicLoading] =
+    useState(false);
+
+  /*
+    FALLBACK MANUAL STATE
+  */
+
+  const [manualFromChain, setManualFromChain] =
+    useState("Ethereum");
+
+  const [manualToChain, setManualToChain] =
+    useState("Solana");
+
+  const [manualToken, setManualToken] =
+    useState("ETH");
+
+  const [manualAmount, setManualAmount] =
+    useState("1");
+
+  /*
+    HELPERS
+  */
 
   const toArray = (value: unknown): string[] => {
     if (Array.isArray(value)) {
@@ -62,6 +101,40 @@ export default function AIFlowController() {
 
     return fallback;
   };
+
+  /*
+    LOAD DYNAMIC DATA
+  */
+
+  const loadDynamicData = async () => {
+    try {
+      setDynamicLoading(true);
+
+      const chainsRes = await fetch("/api/chains");
+
+      const chainsData = await chainsRes.json();
+
+      if (chainsData.success && chainsData.chains) {
+        setChains(chainsData.chains);
+      }
+
+      const tokensRes = await fetch("/api/tokens");
+
+      const tokensData = await tokensRes.json();
+
+      if (tokensData.success && tokensData.tokens) {
+        setTokens(tokensData.tokens);
+      }
+    } catch {
+      console.error("Failed to load dynamic data");
+    } finally {
+      setDynamicLoading(false);
+    }
+  };
+
+  /*
+    AI PLAN
+  */
 
   const preparePlan = async () => {
     if (!message.trim()) return;
@@ -108,40 +181,76 @@ export default function AIFlowController() {
     }
   };
 
-  const intent = plan?.intent || {};
+  /*
+    MANUAL PLAN
+  */
 
-  const questions = toArray(plan?.questions);
+  const createManualPlan = () => {
+    setPlan({
+      intent: {
+        amount: manualAmount,
+        fromToken: manualToken,
+        fromChain: manualFromChain,
+        toChain: manualToChain,
+        toToken:
+          manualToChain === "Solana"
+            ? "SOL"
+            : manualToken,
+        priority: "safest",
+      },
 
-  const warnings = toArray(
-    plan?.safetyWarnings
+      recommendedMode: "Intelligent Routing",
+
+      recommendedRoute: "Dynamic",
+
+      safetyWarnings: [
+        "Always verify destination wallet.",
+      ],
+
+      userFacingSummary:
+        "TRANSPORTAL dynamically planned this transaction using backend intelligence.",
+    });
+
+    setExecutionStarted(false);
+  };
+
+  /*
+    MEMOIZED
+  */
+
+  const intent = useMemo(
+    () => plan?.intent || {},
+    [plan]
+  );
+
+  const questions = useMemo(
+    () => toArray(plan?.questions),
+    [plan]
+  );
+
+  const warnings = useMemo(
+    () => toArray(plan?.safetyWarnings),
+    [plan]
   );
 
   return (
     <div
       style={{
         width: "100%",
-
         padding: 22,
-
         borderRadius: 28,
-
         background:
           "rgba(255,255,255,0.055)",
-
         border:
           "1px solid rgba(255,255,255,0.12)",
-
         color: "white",
-
         boxSizing: "border-box",
       }}
     >
       <h2
         style={{
           margin: 0,
-
           fontSize: 24,
-
           fontWeight: 900,
         }}
       >
@@ -152,91 +261,197 @@ export default function AIFlowController() {
         style={{
           color:
             "rgba(255,255,255,0.68)",
-
           fontSize: 14,
-
           lineHeight: 1.55,
-
           marginTop: 8,
         }}
       >
-        Describe your transfer naturally.
-        TRANSPORTAL AI prepares the
-        safest cross-chain execution
-        flow before wallet confirmation.
+        AI-powered intelligent
+        cross-chain execution engine.
       </p>
 
-      <textarea
-        value={message}
-        onChange={(e) =>
-          setMessage(e.target.value)
-        }
-        placeholder="Example: Send 3 ETH to Solana safely"
-        style={{
-          width: "100%",
+      <Card title="Dynamic backend intelligence">
+        <button
+          onClick={loadDynamicData}
+          style={buttonStyle}
+        >
+          {dynamicLoading
+            ? "Loading intelligence..."
+            : "Load Supported Chains & Tokens"}
+        </button>
 
-          minHeight: 100,
+        {chains.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div
+              style={{
+                fontWeight: 800,
+                marginBottom: 10,
+              }}
+            >
+              Supported Chains
+            </div>
 
-          padding: 16,
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              {chains.map((chain, index) => (
+                <Badge
+                  key={index}
+                  label={chain.name}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
-          borderRadius: 18,
+        {tokens.length > 0 && (
+          <div style={{ marginTop: 18 }}>
+            <div
+              style={{
+                fontWeight: 800,
+                marginBottom: 10,
+              }}
+            >
+              Supported Tokens
+            </div>
 
-          background: "#0c0c0c",
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              {tokens
+                .slice(0, 20)
+                .map((token, index) => (
+                  <Badge
+                    key={index}
+                    label={token.symbol}
+                  />
+                ))}
+            </div>
+          </div>
+        )}
+      </Card>
 
-          color: "white",
+      <Card title="AI transfer planning">
+        <textarea
+          value={message}
+          onChange={(e) =>
+            setMessage(e.target.value)
+          }
+          placeholder="Example: Send 3 ETH to Solana safely"
+          style={textareaStyle}
+        />
 
-          border:
-            "1px solid rgba(255,255,255,0.14)",
-
-          outline: "none",
-
-          resize: "vertical",
-
-          boxSizing: "border-box",
-
-          fontSize: 14,
-
-          marginTop: 14,
-        }}
-      />
-
-      <button
-        onClick={preparePlan}
-        disabled={
-          loading || !message.trim()
-        }
-        style={{
-          marginTop: 14,
-
-          width: "100%",
-
-          padding: 16,
-
-          borderRadius: 18,
-
-          border: "none",
-
-          background:
+        <button
+          onClick={preparePlan}
+          disabled={
             loading || !message.trim()
-              ? "#777"
-              : "white",
+          }
+          style={{
+            ...buttonStyle,
+            marginTop: 14,
+            background:
+              loading || !message.trim()
+                ? "#666"
+                : "white",
+          }}
+        >
+          {loading
+            ? "AI preparing transfer..."
+            : "Prepare Smart Transfer"}
+        </button>
+      </Card>
 
-          color: "black",
+      <Card title="Manual intelligent routing">
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          <select
+            value={manualFromChain}
+            onChange={(e) =>
+              setManualFromChain(
+                e.target.value
+              )
+            }
+            style={selectStyle}
+          >
+            {chains.map((chain, index) => (
+              <option
+                key={index}
+                value={chain.name}
+              >
+                {chain.name}
+              </option>
+            ))}
+          </select>
 
-          fontWeight: 900,
+          <select
+            value={manualToChain}
+            onChange={(e) =>
+              setManualToChain(
+                e.target.value
+              )
+            }
+            style={selectStyle}
+          >
+            {chains.map((chain, index) => (
+              <option
+                key={index}
+                value={chain.name}
+              >
+                {chain.name}
+              </option>
+            ))}
+          </select>
 
-          fontSize: 15,
+          <select
+            value={manualToken}
+            onChange={(e) =>
+              setManualToken(
+                e.target.value
+              )
+            }
+            style={selectStyle}
+          >
+            {tokens.map((token, index) => (
+              <option
+                key={index}
+                value={token.symbol}
+              >
+                {token.symbol}
+              </option>
+            ))}
+          </select>
 
-          cursor:
-            loading || !message.trim()
-              ? "not-allowed"
-              : "pointer",
-        }}
-      >
-        {loading
-          ? "AI is preparing your transfer..."
-          : "Prepare Smart Transfer"}
-      </button>
+          <input
+            value={manualAmount}
+            onChange={(e) =>
+              setManualAmount(
+                e.target.value
+              )
+            }
+            placeholder="Amount"
+            style={inputStyle}
+          />
+
+          <button
+            onClick={createManualPlan}
+            style={buttonStyle}
+          >
+            Build Dynamic Route
+          </button>
+        </div>
+      </Card>
 
       {error && (
         <Card title="Error">
@@ -248,9 +463,7 @@ export default function AIFlowController() {
         <div
           style={{
             marginTop: 18,
-
             display: "grid",
-
             gap: 12,
           }}
         >
@@ -258,44 +471,37 @@ export default function AIFlowController() {
             <div
               style={{
                 fontSize: 17,
-
                 fontWeight: 800,
-
                 lineHeight: 1.45,
               }}
             >
               {text(intent.amount)}{" "}
               {text(intent.fromToken)}{" "}
-              {intent.fromChain
-                ? `from ${intent.fromChain}`
-                : ""}{" "}
-              {intent.toChain
-                ? `to ${intent.toChain}`
-                : ""}
+              from{" "}
+              {text(intent.fromChain)} to{" "}
+              {text(intent.toChain)}
             </div>
           </Card>
 
           <div
             style={{
               display: "grid",
-
               gridTemplateColumns:
                 "1fr 1fr",
-
               gap: 10,
             }}
           >
             <Card title="Mode">
               {text(
                 plan.recommendedMode,
-                "Swap"
+                "Dynamic"
               )}
             </Card>
 
             <Card title="Route">
               {text(
                 plan.recommendedRoute,
-                "Mayan"
+                "Intelligent"
               )}
             </Card>
           </div>
@@ -328,26 +534,7 @@ export default function AIFlowController() {
                 setReceiver(e.target.value)
               }
               placeholder="Paste receiver wallet address"
-              style={{
-                width: "100%",
-
-                padding: 14,
-
-                borderRadius: 14,
-
-                background: "#0c0c0c",
-
-                color: "white",
-
-                border:
-                  "1px solid rgba(255,255,255,0.14)",
-
-                boxSizing: "border-box",
-
-                outline: "none",
-
-                fontSize: 14,
-              }}
+              style={inputStyle}
             />
           </Card>
 
@@ -370,28 +557,22 @@ export default function AIFlowController() {
             <div
               style={{
                 padding: 18,
-
                 borderRadius: 22,
-
                 background:
                   "rgba(255,255,255,0.08)",
-
                 border:
                   "1px solid rgba(255,255,255,0.16)",
-
                 marginTop: 6,
               }}
             >
               <div
                 style={{
                   fontWeight: 900,
-
                   marginBottom: 14,
-
                   fontSize: 18,
                 }}
               >
-                Confirmation Slip
+                Intelligent Confirmation
               </div>
 
               <Slip
@@ -423,23 +604,18 @@ export default function AIFlowController() {
               />
 
               <Slip
-                label="Route"
+                label="Execution Mode"
                 value={text(
-                  plan.recommendedRoute,
-                  "Mayan"
+                  plan.recommendedMode,
+                  "Dynamic"
                 )}
               />
 
               <Slip
-                label="TRANSPORTAL fee"
-                value="$0.00"
-              />
-
-              <Slip
-                label="Priority"
+                label="Route"
                 value={text(
-                  intent.priority,
-                  "safest"
+                  plan.recommendedRoute,
+                  "Intelligent"
                 )}
               />
 
@@ -448,28 +624,11 @@ export default function AIFlowController() {
                   setExecutionStarted(true)
                 }
                 style={{
+                  ...buttonStyle,
                   marginTop: 18,
-
-                  width: "100%",
-
-                  padding: 16,
-
-                  borderRadius: 18,
-
-                  border: "none",
-
-                  background: "white",
-
-                  color: "black",
-
-                  fontWeight: 900,
-
-                  fontSize: 15,
-
-                  cursor: "pointer",
                 }}
               >
-                Confirm in wallet
+                Start Intelligent Execution
               </button>
 
               {executionStarted && (
@@ -489,7 +648,7 @@ export default function AIFlowController() {
                   receiver={receiver}
                   route={text(
                     plan.recommendedRoute,
-                    "Mayan"
+                    "Intelligent"
                   )}
                 />
               )}
@@ -506,32 +665,24 @@ function Card({
   children,
 }: {
   title: string;
-
   children: React.ReactNode;
 }) {
   return (
     <div
       style={{
         padding: 15,
-
         borderRadius: 18,
-
         background: "#080808",
-
         border:
           "1px solid rgba(255,255,255,0.09)",
-
         marginTop: 12,
       }}
     >
       <div
         style={{
           fontSize: 12,
-
           color: "#aaa",
-
           marginBottom: 8,
-
           fontWeight: 700,
         }}
       >
@@ -541,7 +692,6 @@ function Card({
       <div
         style={{
           fontSize: 14,
-
           lineHeight: 1.45,
         }}
       >
@@ -556,24 +706,18 @@ function Slip({
   value,
 }: {
   label: string;
-
   value: string;
 }) {
   return (
     <div
       style={{
         display: "flex",
-
         justifyContent:
           "space-between",
-
         gap: 12,
-
         padding: "10px 0",
-
         borderBottom:
           "1px solid rgba(255,255,255,0.07)",
-
         fontSize: 13,
       }}
     >
@@ -588,9 +732,7 @@ function Slip({
       <span
         style={{
           textAlign: "right",
-
           overflowWrap: "anywhere",
-
           maxWidth: "65%",
         }}
       >
@@ -599,3 +741,78 @@ function Slip({
     </div>
   );
 }
+
+function Badge({
+  label,
+}: {
+  label: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: "8px 12px",
+        borderRadius: 999,
+        background:
+          "rgba(255,255,255,0.08)",
+        border:
+          "1px solid rgba(255,255,255,0.14)",
+        fontSize: 12,
+        fontWeight: 700,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+const buttonStyle = {
+  width: "100%",
+  padding: 15,
+  borderRadius: 16,
+  border: "none",
+  background: "white",
+  color: "black",
+  fontWeight: 900,
+  cursor: "pointer",
+} as const;
+
+const textareaStyle = {
+  width: "100%",
+  minHeight: 100,
+  padding: 16,
+  borderRadius: 18,
+  background: "#0c0c0c",
+  color: "white",
+  border:
+    "1px solid rgba(255,255,255,0.14)",
+  outline: "none",
+  resize: "vertical" as const,
+  boxSizing: "border-box" as const,
+  fontSize: 14,
+  marginTop: 14,
+} as const;
+
+const selectStyle = {
+  width: "100%",
+  padding: 14,
+  borderRadius: 14,
+  background: "#0c0c0c",
+  color: "white",
+  border:
+    "1px solid rgba(255,255,255,0.14)",
+  outline: "none",
+  fontSize: 14,
+} as const;
+
+const inputStyle = {
+  width: "100%",
+  padding: 14,
+  borderRadius: 14,
+  background: "#0c0c0c",
+  color: "white",
+  border:
+    "1px solid rgba(255,255,255,0.14)",
+  boxSizing: "border-box" as const,
+  outline: "none",
+  fontSize: 14,
+} as const;
