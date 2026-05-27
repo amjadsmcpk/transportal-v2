@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import { getEvmSigner } from "../lib/getEvmSigner";
 import { executeMayanEvmSwap } from "../lib/executeMayanEvmSwap";
+import { broadcastSolanaTransaction } from "../lib/execution/broadcastSolanaTransaction";
+import { confirmSolanaTransaction } from "../lib/execution/confirmSolanaTransaction";
 
 type ExecutionStatusProps = {
   amount: string;
@@ -328,7 +330,6 @@ export default function ExecutionStatus({
     }
 
     if (
-      swapState.txHash === "JUPITER_EXECUTOR_READY" ||
       swapState.txHash === "WORMHOLE_EXECUTOR_READY" ||
       swapState.txHash === "CCTP_EXECUTOR_READY"
     ) {
@@ -486,17 +487,27 @@ export default function ExecutionStatus({
       }
     };
 
-    void pollStatus();
-
-    const intervalId = window.setInterval(() => {
+    if (selectedProvider === "mayan") {
       void pollStatus();
-    }, 6000);
+
+      const intervalId = window.setInterval(() => {
+        void pollStatus();
+      }, 6000);
+
+      return () => {
+        stopped = true;
+        window.clearInterval(intervalId);
+      };
+    }
+
+    if (selectedProvider === "jupiter") {
+      void verifyDestination();
+    }
 
     return () => {
       stopped = true;
-      window.clearInterval(intervalId);
     };
-  }, [swapState.txHash, receiver, normalizedToChain]);
+  }, [swapState.txHash, receiver, normalizedToChain, selectedProvider]);
 
   const unsafeExecution = !gasState.safe || !slippageState.safe;
 
@@ -552,16 +563,80 @@ export default function ExecutionStatus({
 
   const startExecution = async () => {
     if (selectedProvider === "jupiter") {
-      setSwapState({
-        loading: false,
-        success: true,
-        error: "",
-        wallet: signState.wallet,
-        status: "Jupiter executor connected",
-        txHash: "JUPITER_EXECUTOR_READY",
-      });
+      try {
+        setSwapState({
+          loading: true,
+          success: false,
+          error: "",
+          wallet: "",
+          status: "Preparing Jupiter swap...",
+          txHash: "",
+        });
 
-      return;
+        const response = await fetch("/api/execute-jupiter", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            inputMint: "So11111111111111111111111111111111111111112",
+            outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            amount: "1000000",
+            slippageBps: 50,
+            userPublicKey: receiver,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.success || !data.swapTransaction) {
+          throw new Error(data.error || "Jupiter execution failed.");
+        }
+
+        const broadcast = await broadcastSolanaTransaction(data.swapTransaction);
+
+        const confirmation = await confirmSolanaTransaction(broadcast.txHash);
+
+        setSwapState({
+          loading: false,
+          success: confirmation.confirmed,
+          error: confirmation.confirmed ? "" : "Transaction pending confirmation.",
+          wallet: receiver,
+          status: confirmation.confirmed
+            ? "Jupiter swap confirmed"
+            : "Jupiter swap submitted",
+          txHash: broadcast.txHash,
+        });
+
+        await saveTransaction({
+          wallet: receiver,
+          receiver,
+          fromChain,
+          toChain,
+          fromToken,
+          amount,
+          route,
+          provider: selectedProvider,
+          txHash: broadcast.txHash,
+          status: confirmation.confirmed
+            ? "jupiter_confirmed"
+            : "jupiter_submitted",
+        });
+
+        return;
+      } catch (error) {
+        setSwapState({
+          loading: false,
+          success: false,
+          error:
+            error instanceof Error ? error.message : "Jupiter swap failed.",
+          wallet: "",
+          status: "",
+          txHash: "",
+        });
+
+        return;
+      }
     }
 
     if (selectedProvider === "wormhole") {
@@ -674,12 +749,12 @@ export default function ExecutionStatus({
 
   const explorerUrl =
     swapState.txHash &&
-    ![
-      "JUPITER_EXECUTOR_READY",
-      "WORMHOLE_EXECUTOR_READY",
-      "CCTP_EXECUTOR_READY",
-    ].includes(swapState.txHash)
-      ? `https://etherscan.io/tx/${swapState.txHash}`
+    !["WORMHOLE_EXECUTOR_READY", "CCTP_EXECUTOR_READY"].includes(
+      swapState.txHash
+    )
+      ? selectedProvider === "jupiter"
+        ? `https://solscan.io/tx/${swapState.txHash}`
+        : `https://etherscan.io/tx/${swapState.txHash}`
       : "";
 
   return (
