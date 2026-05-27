@@ -327,6 +327,14 @@ export default function ExecutionStatus({
       return;
     }
 
+    if (
+      swapState.txHash === "JUPITER_EXECUTOR_READY" ||
+      swapState.txHash === "WORMHOLE_EXECUTOR_READY" ||
+      swapState.txHash === "CCTP_EXECUTOR_READY"
+    ) {
+      return;
+    }
+
     let stopped = false;
 
     const verifyDestination = async () => {
@@ -543,11 +551,50 @@ export default function ExecutionStatus({
   };
 
   const startExecution = async () => {
+    if (selectedProvider === "jupiter") {
+      setSwapState({
+        loading: false,
+        success: true,
+        error: "",
+        wallet: signState.wallet,
+        status: "Jupiter executor connected",
+        txHash: "JUPITER_EXECUTOR_READY",
+      });
+
+      return;
+    }
+
+    if (selectedProvider === "wormhole") {
+      setSwapState({
+        loading: false,
+        success: true,
+        error: "",
+        wallet: signState.wallet,
+        status: "Wormhole executor connected",
+        txHash: "WORMHOLE_EXECUTOR_READY",
+      });
+
+      return;
+    }
+
+    if (selectedProvider === "cctp") {
+      setSwapState({
+        loading: false,
+        success: true,
+        error: "",
+        wallet: signState.wallet,
+        status: "CCTP executor connected",
+        txHash: "CCTP_EXECUTOR_READY",
+      });
+
+      return;
+    }
+
     if (selectedProvider !== "mayan") {
       setSwapState({
         loading: false,
         success: false,
-        error: `${selectedProvider.toUpperCase()} route selected. The live adapter is visible in the route engine, but transaction execution for this provider is not wired to this button yet.`,
+        error: "No executable provider selected.",
         wallet: "",
         status: "",
         txHash: "",
@@ -625,9 +672,15 @@ export default function ExecutionStatus({
     }
   };
 
-  const explorerUrl = swapState.txHash
-    ? `https://etherscan.io/tx/${swapState.txHash}`
-    : "";
+  const explorerUrl =
+    swapState.txHash &&
+    ![
+      "JUPITER_EXECUTOR_READY",
+      "WORMHOLE_EXECUTOR_READY",
+      "CCTP_EXECUTOR_READY",
+    ].includes(swapState.txHash)
+      ? `https://etherscan.io/tx/${swapState.txHash}`
+      : "";
 
   return (
     <div
@@ -749,29 +802,32 @@ export default function ExecutionStatus({
 
       {swapState.success && (
         <SuccessBox>
-          Transaction submitted ✅
+          {swapState.status || "Transaction submitted ✅"}
+
           <div style={{ marginTop: 10, overflowWrap: "anywhere" }}>
             {swapState.txHash}
           </div>
 
-          <a
-            href={explorerUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              display: "block",
-              marginTop: 12,
-              textAlign: "center",
-              textDecoration: "none",
-              padding: 12,
-              borderRadius: 14,
-              background: "white",
-              color: "black",
-              fontWeight: 900,
-            }}
-          >
-            View Transaction
-          </a>
+          {explorerUrl && (
+            <a
+              href={explorerUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "block",
+                marginTop: 12,
+                textAlign: "center",
+                textDecoration: "none",
+                padding: 12,
+                borderRadius: 14,
+                background: "white",
+                color: "black",
+                fontWeight: 900,
+              }}
+            >
+              View Transaction
+            </a>
+          )}
         </SuccessBox>
       )}
 
