@@ -75,6 +75,12 @@ type SlippageState = {
   error: string;
 };
 
+type RouteItem = {
+  provider: string;
+  reason: string;
+  priority: number;
+};
+
 export default function ExecutionStatus({
   amount,
   fromToken,
@@ -144,14 +150,10 @@ export default function ExecutionStatus({
     error: "",
   });
 
-  const normalizedFromChain = fromChain.toLowerCase();
+  const [selectedProvider, setSelectedProvider] = useState("");
+  const [availableRoutes, setAvailableRoutes] = useState<RouteItem[]>([]);
+
   const normalizedToChain = toChain.toLowerCase();
-
-  const isMayanLiveRoute =
-    normalizedFromChain === "ethereum" && normalizedToChain === "solana";
-
-  const isJupiterLiveRoute =
-    normalizedFromChain === "solana" || normalizedToChain === "solana";
 
   const saveTransaction = async (payload: Record<string, unknown>) => {
     try {
@@ -184,7 +186,7 @@ export default function ExecutionStatus({
   useEffect(() => {
     const prepareExecution = async () => {
       try {
-        const quoteRes = await fetch("/api/mayan-quote", {
+        const routeRes = await fetch("/api/select-live-route", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -199,31 +201,59 @@ export default function ExecutionStatus({
           }),
         });
 
-        const quoteData = await quoteRes.json();
+        const routeData = await routeRes.json();
 
-        if (!quoteData.success) {
+        if (!routeData.success) {
           setQuoteState({
             loading: false,
             success: false,
-            error: quoteData.error || "Mayan quote unavailable for this route.",
+            error: routeData.error || "No live route available.",
             quote: null,
           });
 
           setExecutionState({
             loading: false,
-            success: true,
+            success: false,
             error: "",
           });
 
           return;
         }
 
-        setQuoteState({
-          loading: false,
-          success: true,
-          error: "",
-          quote: quoteData.quote,
-        });
+        const selected = routeData.selectedRoute;
+        const routes = routeData.availableRoutes || [];
+
+        setSelectedProvider(String(selected?.provider || ""));
+
+        setAvailableRoutes(
+          routes.map(
+            (item: {
+              provider?: string;
+              reason?: string;
+              priority?: number;
+            }) => ({
+              provider: String(item.provider || ""),
+              reason: String(item.reason || ""),
+              priority: Number(item.priority || 0),
+            })
+          )
+        );
+
+        if (selected?.provider === "mayan" && selected?.quote) {
+          setQuoteState({
+            loading: false,
+            success: true,
+            error: "",
+            quote: selected.quote as Record<string, unknown>,
+          });
+        } else {
+          setQuoteState({
+            loading: false,
+            success: true,
+            error: "",
+            quote: null,
+          });
+        }
 
         const gasRes = await fetch("/api/check-gas", {
           method: "POST",
@@ -241,29 +271,31 @@ export default function ExecutionStatus({
           });
         }
 
-        const slippageRes = await fetch("/api/check-slippage", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            quote: quoteData.quote,
-          }),
-        });
-
-        const slippageData = await slippageRes.json();
-
-        if (slippageData.success) {
-          setSlippageState({
-            loading: false,
-            safe: Boolean(slippageData.safeToProceed),
-            percent:
-              typeof slippageData.slippagePercent === "number"
-                ? slippageData.slippagePercent.toFixed(2)
-                : "0",
-            message: slippageData.message || "",
-            error: "",
+        if (selected?.quote) {
+          const slippageRes = await fetch("/api/check-slippage", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              quote: selected.quote,
+            }),
           });
+
+          const slippageData = await slippageRes.json();
+
+          if (slippageData.success) {
+            setSlippageState({
+              loading: false,
+              safe: Boolean(slippageData.safeToProceed),
+              percent:
+                typeof slippageData.slippagePercent === "number"
+                  ? slippageData.slippagePercent.toFixed(2)
+                  : "0",
+              message: slippageData.message || "",
+              error: "",
+            });
+          }
         }
 
         setExecutionState({
@@ -275,28 +307,20 @@ export default function ExecutionStatus({
         setQuoteState({
           loading: false,
           success: false,
-          error: "Mayan quote request failed, but route intelligence is still active.",
+          error: "Universal route selection failed.",
           quote: null,
         });
 
         setExecutionState({
           loading: false,
-          success: true,
+          success: false,
           error: "",
         });
       }
     };
 
     void prepareExecution();
-  }, [
-    amount,
-    fromToken,
-    fromChain,
-    toChain,
-    receiver,
-    route,
-    normalizedToChain,
-  ]);
+  }, [amount, fromToken, fromChain, toChain, receiver, route, normalizedToChain]);
 
   useEffect(() => {
     if (!swapState.txHash) {
@@ -443,13 +467,13 @@ export default function ExecutionStatus({
           status: "",
           completed: false,
           refunded: false,
-          error: "Failed to poll Mayan status.",
+          error: "Failed to poll status.",
         });
 
         await updateTransaction({
           txHash: swapState.txHash,
           status: "polling_error",
-          errorMessage: "Failed to poll Mayan status.",
+          errorMessage: "Failed to poll status.",
         });
       }
     };
@@ -492,6 +516,7 @@ export default function ExecutionStatus({
         `To: ${toChain}`,
         `Receiver: ${receiver}`,
         `Route: ${route}`,
+        `Selected Provider: ${selectedProvider}`,
       ].join("\n");
 
       const signature = await signer.signMessage(message);
@@ -517,13 +542,25 @@ export default function ExecutionStatus({
     }
   };
 
-  const startMayanExecution = async () => {
+  const startExecution = async () => {
+    if (selectedProvider !== "mayan") {
+      setSwapState({
+        loading: false,
+        success: false,
+        error: `${selectedProvider.toUpperCase()} route selected. The live adapter is visible in the route engine, but transaction execution for this provider is not wired to this button yet.`,
+        wallet: "",
+        status: "",
+        txHash: "",
+      });
+
+      return;
+    }
+
     if (!quoteState.quote) {
       setSwapState({
         loading: false,
         success: false,
-        error:
-          "Mayan quote is not available for this route. Jupiter route support is visible, but Solana wallet execution must be started through the Jupiter executor.",
+        error: "Live Mayan quote unavailable.",
         wallet: "",
         status: "",
         txHash: "",
@@ -566,6 +603,7 @@ export default function ExecutionStatus({
         fromToken,
         amount,
         route,
+        provider: selectedProvider,
         txHash: result.txHash,
         status: result.status || "submitted",
         explorerUrl: explorerUrlForTx,
@@ -574,7 +612,7 @@ export default function ExecutionStatus({
       });
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Mayan execution failed.";
+        error instanceof Error ? error.message : "Execution failed.";
 
       setSwapState({
         loading: false,
@@ -602,30 +640,46 @@ export default function ExecutionStatus({
         color: "white",
       }}
     >
-      <h3>Real execution engine</h3>
+      <h3>Universal execution engine</h3>
 
-      {isJupiterLiveRoute && (
+      {quoteState.loading && (
+        <StatusBox>Selecting best live route...</StatusBox>
+      )}
+
+      {quoteState.success && selectedProvider && (
         <SuccessBox>
-          Jupiter live swap engine available ✅
+          Selected provider:
           <br />
-          Solana-side swap routing is connected.
+          <strong>{selectedProvider.toUpperCase()}</strong>
         </SuccessBox>
       )}
 
-      {isMayanLiveRoute && (
-        <SuccessBox>Mayan live bridge executor available ✅</SuccessBox>
-      )}
-
-      {!isMayanLiveRoute && !isJupiterLiveRoute && (
+      {availableRoutes.length > 0 && (
         <StatusBox>
-          TRANSPORTAL planned this route. Live executor adapter is being
-          selected.
+          <div style={{ fontWeight: 800, marginBottom: 10 }}>
+            Available Live Routes
+          </div>
+
+          {availableRoutes.map((item, index) => (
+            <div
+              key={`${item.provider}-${index}`}
+              style={{
+                marginBottom: 10,
+                paddingBottom: 10,
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <div style={{ fontWeight: 800, textTransform: "uppercase" }}>
+                {item.provider}
+              </div>
+
+              <div style={{ marginTop: 4, opacity: 0.8, fontSize: 13 }}>
+                {item.reason}
+              </div>
+            </div>
+          ))}
         </StatusBox>
       )}
-
-      {quoteState.loading && <StatusBox>Checking Mayan route...</StatusBox>}
-
-      {quoteState.success && <SuccessBox>Mayan route found ✅</SuccessBox>}
 
       {quoteState.error && <StatusBox>{quoteState.error}</StatusBox>}
 
@@ -678,13 +732,13 @@ export default function ExecutionStatus({
           Wallet signature received ✅
           <button
             type="button"
-            onClick={startMayanExecution}
+            onClick={startExecution}
             style={{
               ...buttonStyle,
               marginTop: 14,
             }}
           >
-            Start Available Executor
+            Start Selected Executor
           </button>
         </SuccessBox>
       )}
@@ -696,12 +750,7 @@ export default function ExecutionStatus({
       {swapState.success && (
         <SuccessBox>
           Transaction submitted ✅
-          <div
-            style={{
-              marginTop: 10,
-              overflowWrap: "anywhere",
-            }}
-          >
+          <div style={{ marginTop: 10, overflowWrap: "anywhere" }}>
             {swapState.txHash}
           </div>
 
@@ -721,24 +770,22 @@ export default function ExecutionStatus({
               fontWeight: 900,
             }}
           >
-            View on Etherscan
+            View Transaction
           </a>
         </SuccessBox>
       )}
 
-      {trackingState.loading && <StatusBox>Polling Mayan status...</StatusBox>}
+      {trackingState.loading && <StatusBox>Polling route status...</StatusBox>}
 
       {trackingState.status && (
         <StatusBox>
-          Cross-chain status:
+          Status:
           <br />
           <strong>{trackingState.status}</strong>
         </StatusBox>
       )}
 
-      {trackingState.completed && (
-        <SuccessBox>Cross-chain transfer completed ✅</SuccessBox>
-      )}
+      {trackingState.completed && <SuccessBox>Transfer completed ✅</SuccessBox>}
 
       {trackingState.refunded && <ErrorBox>Transfer refunded.</ErrorBox>}
 
