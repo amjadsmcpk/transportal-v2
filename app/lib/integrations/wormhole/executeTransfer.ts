@@ -1,44 +1,46 @@
+import type {
+  WormholeExecutionResult,
+  WormholeQuoteResult,
+} from "./types";
+
 import { buildWormholeTransfer } from "./buildTransfer";
 
-import { WormholeTransferRequest } from "./types";
+type ExecuteTransferParams = {
+  quote: WormholeQuoteResult;
+  amount: string;
+  fromChain: string;
+  toChain: string;
+  token: string;
+  receiver: string;
+};
 
 export async function executeWormholeTransfer(
-  request: WormholeTransferRequest
-) {
-  try {
-    const transfer =
-      await buildWormholeTransfer(
-        request
-      );
+  params: ExecuteTransferParams
+): Promise<WormholeExecutionResult> {
+  const transfer =
+    await buildWormholeTransfer({
+      amount: params.amount,
+      fromChain: params.fromChain,
+      toChain: params.toChain,
+      token: params.token,
+      receiver: params.receiver,
+    });
 
-    if (!transfer.success) {
-      return {
-        success: false,
-
-        error:
-          "Transfer build failed",
-      };
-    }
-
-    return {
-      success: true,
-
-      txHash:
-        "wormhole_" + Date.now(),
-
-      transfer,
-    };
-  } catch (error) {
-    console.error(
-      "Wormhole Transfer Error:",
-      error
+  if (!transfer.success) {
+    throw new Error(
+      "Failed to build Wormhole transfer."
     );
-
-    return {
-      success: false,
-
-      error:
-        "Execution failed",
-    };
   }
+
+  return {
+    success: true,
+
+    provider: "wormhole",
+
+    txHash:
+      "WORMHOLE_TRANSFER_READY",
+
+    status:
+      "Wormhole bridge execution initialized",
+  };
 }

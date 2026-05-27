@@ -6,6 +6,8 @@ import { getEvmSigner } from "../lib/getEvmSigner";
 import { executeMayanEvmSwap } from "../lib/executeMayanEvmSwap";
 import { broadcastSolanaTransaction } from "../lib/execution/broadcastSolanaTransaction";
 import { confirmSolanaTransaction } from "../lib/execution/confirmSolanaTransaction";
+import { broadcastEvmTransaction } from "../lib/execution/broadcastEvmTransaction";
+import { confirmEvmTransaction } from "../lib/execution/confirmEvmTransaction";
 
 type ExecutionStatusProps = {
   amount: string;
@@ -183,6 +185,17 @@ export default function ExecutionStatus({
     } catch {
       // Do not block tracking if DB update fails.
     }
+  };
+
+  const getEvmChainId = () => {
+    const chain = fromChain.toLowerCase();
+
+    if (chain === "ethereum") return 1;
+    if (chain === "base") return 8453;
+    if (chain === "arbitrum") return 42161;
+    if (chain === "polygon") return 137;
+
+    return 1;
   };
 
   useEffect(() => {
@@ -600,7 +613,9 @@ export default function ExecutionStatus({
         setSwapState({
           loading: false,
           success: confirmation.confirmed,
-          error: confirmation.confirmed ? "" : "Transaction pending confirmation.",
+          error: confirmation.confirmed
+            ? ""
+            : "Transaction pending confirmation.",
           wallet: receiver,
           status: confirmation.confirmed
             ? "Jupiter swap confirmed"
@@ -630,6 +645,88 @@ export default function ExecutionStatus({
           success: false,
           error:
             error instanceof Error ? error.message : "Jupiter swap failed.",
+          wallet: "",
+          status: "",
+          txHash: "",
+        });
+
+        return;
+      }
+    }
+
+    if (selectedProvider === "uniswap") {
+      try {
+        setSwapState({
+          loading: true,
+          success: false,
+          error: "",
+          wallet: signState.wallet,
+          status: "Preparing Uniswap swap...",
+          txHash: "",
+        });
+
+        const response = await fetch("/api/execute-uniswap", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            tokenIn: fromToken,
+            tokenOut: normalizedToChain === "ethereum" ? "ETH" : fromToken,
+            amount,
+            chainId: getEvmChainId(),
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.success || !data.transaction) {
+          throw new Error(data.error || "Uniswap execution failed.");
+        }
+
+        const broadcast = await broadcastEvmTransaction({
+          to: data.transaction.to,
+          data: data.transaction.data,
+          value: data.transaction.value,
+        });
+
+        const confirmation = await confirmEvmTransaction(broadcast.txHash);
+
+        setSwapState({
+          loading: false,
+          success: confirmation.confirmed,
+          error: confirmation.confirmed
+            ? ""
+            : "Transaction pending confirmation.",
+          wallet: signState.wallet,
+          status: confirmation.confirmed
+            ? "Uniswap swap confirmed"
+            : "Uniswap swap submitted",
+          txHash: broadcast.txHash,
+        });
+
+        await saveTransaction({
+          wallet: signState.wallet,
+          receiver,
+          fromChain,
+          toChain,
+          fromToken,
+          amount,
+          route,
+          provider: "uniswap",
+          txHash: broadcast.txHash,
+          status: confirmation.confirmed
+            ? "uniswap_confirmed"
+            : "uniswap_submitted",
+        });
+
+        return;
+      } catch (error) {
+        setSwapState({
+          loading: false,
+          success: false,
+          error:
+            error instanceof Error ? error.message : "Uniswap swap failed.",
           wallet: "",
           status: "",
           txHash: "",

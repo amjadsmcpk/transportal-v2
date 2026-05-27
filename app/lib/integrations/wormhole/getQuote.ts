@@ -1,21 +1,20 @@
-import { WormholeTransferRequest } from "./types";
+import type {
+  WormholeQuoteParams,
+  WormholeQuoteResult,
+} from "./types";
 
 export async function getWormholeQuote(
-  request: WormholeTransferRequest
-) {
+  params: WormholeQuoteParams
+): Promise<WormholeQuoteResult> {
   return {
     success: true,
-
+    provider: "wormhole",
+    bridgeFee: "0.001",
     estimatedTime: "2-5 minutes",
-
-    bridgeFee: "0.001 ETH",
-
-    route: {
-      fromChain: request.fromChain,
-
-      toChain: request.toChain,
-
-      token: request.token,
-    },
+    route: [
+      params.fromChain,
+      "Wormhole Guardians",
+      params.toChain,
+    ],
   };
 }
