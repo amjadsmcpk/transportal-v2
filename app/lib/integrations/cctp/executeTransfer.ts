@@ -4,6 +4,7 @@ import type {
 } from "./types";
 
 import { buildCctpTransfer } from "./buildTransfer";
+import { initiateCctpBurn } from "./sdk/initiateBurn";
 
 type ExecuteTransferParams = {
   quote: CctpQuoteResult;
@@ -17,30 +18,29 @@ type ExecuteTransferParams = {
 export async function executeCctpTransfer(
   params: ExecuteTransferParams
 ): Promise<CctpExecutionResult> {
-  const transfer =
-    await buildCctpTransfer({
-      amount: params.amount,
-      fromChain: params.fromChain,
-      toChain: params.toChain,
-      token: params.token,
-      receiver: params.receiver,
-    });
+  const transfer = await buildCctpTransfer({
+    amount: params.amount,
+    fromChain: params.fromChain,
+    toChain: params.toChain,
+    token: params.token,
+    receiver: params.receiver,
+  });
 
   if (!transfer.success) {
-    throw new Error(
-      "Failed to build CCTP transfer."
-    );
+    throw new Error("Failed to build CCTP transfer.");
   }
+
+  const burn = await initiateCctpBurn({
+    amount: params.amount,
+    fromChain: params.fromChain,
+    toChain: params.toChain,
+    receiver: params.receiver,
+  });
 
   return {
     success: true,
-
     provider: "cctp",
-
-    txHash:
-      "CCTP_TRANSFER_READY",
-
-    status:
-      "CCTP native USDC transfer initialized",
+    txHash: burn.burnTxHash,
+    status: burn.status,
   };
 }

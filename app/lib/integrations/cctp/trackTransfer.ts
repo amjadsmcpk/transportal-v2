@@ -1,28 +1,40 @@
-import type {
-  CctpTrackingResult,
-} from "./types";
+import { fetchCctpAttestation } from "./sdk/attestation";
+import { mintCctpTransfer } from "./sdk/mintTransfer";
+
+import type { CctpTrackingResult } from "./types";
+
+type TrackCctpTransferParams = {
+  txHash: string;
+  toChain: string;
+  receiver: string;
+};
 
 export async function trackCctpTransfer(
-  txHash: string
+  params: TrackCctpTransferParams
 ): Promise<CctpTrackingResult> {
-  const normalizedTx =
-    txHash.trim();
+  const attestation = await fetchCctpAttestation({
+    burnTxHash: params.txHash,
+  });
+
+  if (!attestation.attestationReady || !attestation.attestation) {
+    return {
+      success: true,
+      status: attestation.status,
+      completed: false,
+      attestationReady: false,
+    };
+  }
+
+  const mint = await mintCctpTransfer({
+    attestation: attestation.attestation,
+    toChain: params.toChain,
+    receiver: params.receiver,
+  });
 
   return {
     success: true,
-
-    status:
-      normalizedTx ===
-      "CCTP_TRANSFER_READY"
-        ? "ATTESTATION_PENDING"
-        : "COMPLETED",
-
-    completed:
-      normalizedTx !==
-      "CCTP_TRANSFER_READY",
-
-    attestationReady:
-      normalizedTx !==
-      "CCTP_TRANSFER_READY",
+    status: mint.status,
+    completed: true,
+    attestationReady: true,
   };
 }

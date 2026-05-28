@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 
 import { getEvmSigner } from "../lib/getEvmSigner";
-import { executeMayanEvmSwap } from "../lib/executeMayanEvmSwap";
 import { broadcastSolanaTransaction } from "../lib/execution/broadcastSolanaTransaction";
 import { confirmSolanaTransaction } from "../lib/execution/confirmSolanaTransaction";
 import { broadcastEvmTransaction } from "../lib/execution/broadcastEvmTransaction";
@@ -156,6 +155,7 @@ export default function ExecutionStatus({
 
   const [selectedProvider, setSelectedProvider] = useState("");
   const [availableRoutes, setAvailableRoutes] = useState<RouteItem[]>([]);
+  const [attemptedProviders, setAttemptedProviders] = useState<string[]>([]);
 
   const normalizedToChain = toChain.toLowerCase();
 
@@ -530,380 +530,217 @@ export default function ExecutionStatus({
   };
 
   const startExecution = async () => {
-    if (selectedProvider === "jupiter") {
-      try {
-        setSwapState({
-          loading: true,
-          success: false,
-          error: "",
-          wallet: "",
-          status: "Preparing Jupiter swap...",
-          txHash: "",
-        });
-
-        const response = await fetch("/api/execute-jupiter", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            inputMint: "So11111111111111111111111111111111111111112",
-            outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-            amount: "1000000",
-            slippageBps: 50,
-            userPublicKey: receiver,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!data.success || !data.swapTransaction) {
-          throw new Error(data.error || "Jupiter execution failed.");
-        }
-
-        const broadcast = await broadcastSolanaTransaction(data.swapTransaction);
-        const confirmation = await confirmSolanaTransaction(broadcast.txHash);
-
-        setSwapState({
-          loading: false,
-          success: confirmation.confirmed,
-          error: confirmation.confirmed ? "" : "Transaction pending confirmation.",
-          wallet: receiver,
-          status: confirmation.confirmed
-            ? "Jupiter swap confirmed"
-            : "Jupiter swap submitted",
-          txHash: broadcast.txHash,
-        });
-
-        await saveTransaction({
-          wallet: receiver,
-          receiver,
-          fromChain,
-          toChain,
-          fromToken,
-          amount,
-          route,
-          provider: selectedProvider,
-          txHash: broadcast.txHash,
-          status: confirmation.confirmed
-            ? "jupiter_confirmed"
-            : "jupiter_submitted",
-        });
-
-        return;
-      } catch (error) {
-        setSwapState({
-          loading: false,
-          success: false,
-          error: error instanceof Error ? error.message : "Jupiter swap failed.",
-          wallet: "",
-          status: "",
-          txHash: "",
-        });
-
-        return;
-      }
-    }
-
-    if (selectedProvider === "uniswap") {
-      try {
-        setSwapState({
-          loading: true,
-          success: false,
-          error: "",
-          wallet: signState.wallet,
-          status: "Preparing Uniswap swap...",
-          txHash: "",
-        });
-
-        const response = await fetch("/api/execute-uniswap", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tokenIn: fromToken,
-            tokenOut: normalizedToChain === "ethereum" ? "ETH" : fromToken,
-            amount,
-            chainId: getEvmChainId(),
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!data.success || !data.transaction) {
-          throw new Error(data.error || "Uniswap execution failed.");
-        }
-
-        const broadcast = await broadcastEvmTransaction({
-          to: data.transaction.to,
-          data: data.transaction.data,
-          value: data.transaction.value,
-        });
-
-        const confirmation = await confirmEvmTransaction(broadcast.txHash);
-
-        setSwapState({
-          loading: false,
-          success: confirmation.confirmed,
-          error: confirmation.confirmed ? "" : "Transaction pending confirmation.",
-          wallet: signState.wallet,
-          status: confirmation.confirmed
-            ? "Uniswap swap confirmed"
-            : "Uniswap swap submitted",
-          txHash: broadcast.txHash,
-        });
-
-        await saveTransaction({
-          wallet: signState.wallet,
-          receiver,
-          fromChain,
-          toChain,
-          fromToken,
-          amount,
-          route,
-          provider: "uniswap",
-          txHash: broadcast.txHash,
-          status: confirmation.confirmed
-            ? "uniswap_confirmed"
-            : "uniswap_submitted",
-        });
-
-        return;
-      } catch (error) {
-        setSwapState({
-          loading: false,
-          success: false,
-          error: error instanceof Error ? error.message : "Uniswap swap failed.",
-          wallet: "",
-          status: "",
-          txHash: "",
-        });
-
-        return;
-      }
-    }
-
-    if (selectedProvider === "wormhole") {
-      try {
-        setSwapState({
-          loading: true,
-          success: false,
-          error: "",
-          wallet: signState.wallet,
-          status: "Broadcasting Wormhole transfer...",
-          txHash: "",
-        });
-
-        const response = await fetch("/api/execute-wormhole", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amount,
-            fromChain,
-            toChain,
-            token: fromToken,
-            receiver,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!data.success || !data.txHash) {
-          throw new Error(data.error || "Wormhole execution failed.");
-        }
-
-        setSwapState({
-          loading: false,
-          success: true,
-          error: "",
-          wallet: signState.wallet,
-          status: data.status || "Wormhole transfer submitted",
-          txHash: data.txHash,
-        });
-
-        setTrackingState({
-          loading: false,
-          status: data.status || "WORMHOLE_TRANSFER_INITIALIZED",
-          completed: false,
-          refunded: false,
-          error: "",
-        });
-
-        await saveTransaction({
-          wallet: signState.wallet,
-          receiver,
-          fromChain,
-          toChain,
-          fromToken,
-          amount,
-          route,
-          provider: "wormhole",
-          txHash: data.txHash,
-          status: data.status || "wormhole_submitted",
-        });
-
-        return;
-      } catch (error) {
-        setSwapState({
-          loading: false,
-          success: false,
-          error:
-            error instanceof Error ? error.message : "Wormhole transfer failed.",
-          wallet: "",
-          status: "",
-          txHash: "",
-        });
-
-        return;
-      }
-    }
-
-    if (selectedProvider === "cctp") {
-      try {
-        setSwapState({
-          loading: true,
-          success: false,
-          error: "",
-          wallet: signState.wallet,
-          status: "Broadcasting CCTP transfer...",
-          txHash: "",
-        });
-
-        const response = await fetch("/api/execute-cctp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amount,
-            fromChain,
-            toChain,
-            token: fromToken,
-            receiver,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!data.success || !data.txHash) {
-          throw new Error(data.error || "CCTP execution failed.");
-        }
-
-        setSwapState({
-          loading: false,
-          success: true,
-          error: "",
-          wallet: signState.wallet,
-          status: data.status || "CCTP transfer submitted",
-          txHash: data.txHash,
-        });
-
-        setTrackingState({
-          loading: false,
-          status: data.status || "CCTP_TRANSFER_INITIALIZED",
-          completed: false,
-          refunded: false,
-          error: "",
-        });
-
-        await saveTransaction({
-          wallet: signState.wallet,
-          receiver,
-          fromChain,
-          toChain,
-          fromToken,
-          amount,
-          route,
-          provider: "cctp",
-          txHash: data.txHash,
-          status: data.status || "cctp_submitted",
-        });
-
-        return;
-      } catch (error) {
-        setSwapState({
-          loading: false,
-          success: false,
-          error: error instanceof Error ? error.message : "CCTP transfer failed.",
-          wallet: "",
-          status: "",
-          txHash: "",
-        });
-
-        return;
-      }
-    }
-
-    if (selectedProvider !== "mayan") {
-      setSwapState({
-        loading: false,
-        success: false,
-        error: "No executable provider selected.",
-        wallet: "",
-        status: "",
-        txHash: "",
-      });
-
-      return;
-    }
-
-    if (!quoteState.quote) {
-      setSwapState({
-        loading: false,
-        success: false,
-        error: "Live Mayan quote unavailable.",
-        wallet: "",
-        status: "",
-        txHash: "",
-      });
-
-      return;
-    }
-
     try {
       setSwapState({
         loading: true,
         success: false,
         error: "",
-        wallet: "",
-        status: "",
+        wallet: signState.wallet,
+        status: "Initializing intelligent orchestration...",
         txHash: "",
       });
 
-      const result = await executeMayanEvmSwap({
-        quote: quoteState.quote,
-        receiver,
+      const orchestrationResponse = await fetch("/api/orchestrate-execution", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          providers: ["mayan", "jupiter", "uniswap", "wormhole", "cctp"],
+          amount,
+          fromChain,
+          toChain,
+          fromToken,
+          toToken: normalizedToChain === "solana" ? "SOL" : fromToken,
+          receiver,
+          userPublicKey: receiver,
+        }),
       });
 
-      const explorerUrlForTx = `https://etherscan.io/tx/${result.txHash}`;
+      const orchestrationData = await orchestrationResponse.json();
+
+      if (!orchestrationData.success) {
+        throw new Error(
+          orchestrationData.error || "Execution orchestration failed."
+        );
+      }
+
+      const provider = String(orchestrationData.selectedProvider || "");
+      const txHash = String(orchestrationData.txHash || "");
+      const status = String(
+        orchestrationData.status || "Execution initialized"
+      );
+
+      setSelectedProvider(provider);
+
+      setAttemptedProviders(
+        Array.isArray(orchestrationData.attemptedProviders)
+          ? orchestrationData.attemptedProviders.map((item: unknown) =>
+              String(item)
+            )
+          : []
+      );
 
       setSwapState({
         loading: false,
         success: true,
         error: "",
-        wallet: result.wallet,
-        status: result.status,
-        txHash: result.txHash,
+        wallet: signState.wallet,
+        status,
+        txHash,
+      });
+
+      setTrackingState({
+        loading: false,
+        status,
+        completed: false,
+        refunded: false,
+        error: "",
       });
 
       await saveTransaction({
-        wallet: result.wallet,
+        wallet: signState.wallet,
         receiver,
         fromChain,
         toChain,
         fromToken,
         amount,
         route,
-        provider: selectedProvider,
-        txHash: result.txHash,
-        status: result.status || "submitted",
-        explorerUrl: explorerUrlForTx,
-        gasGwei: gasState.gasGwei,
-        slippagePercent: slippageState.percent,
+        provider,
+        txHash,
+        status,
+        attemptedProviders: orchestrationData.attemptedProviders || [],
       });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Execution failed.";
 
+      if (provider === "jupiter") {
+        try {
+          setSwapState((prev) => ({
+            ...prev,
+            loading: true,
+            status: "Broadcasting Jupiter transaction...",
+          }));
+
+          const response = await fetch("/api/execute-jupiter", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              inputMint: "So11111111111111111111111111111111111111112",
+              outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              amount: "1000000",
+              slippageBps: 50,
+              userPublicKey: receiver,
+            }),
+          });
+
+          const data = await response.json();
+
+          if (data.success && data.swapTransaction) {
+            const broadcast = await broadcastSolanaTransaction(
+              data.swapTransaction
+            );
+
+            const confirmation = await confirmSolanaTransaction(
+              broadcast.txHash
+            );
+
+            setSwapState({
+              loading: false,
+              success: confirmation.confirmed,
+              error: confirmation.confirmed
+                ? ""
+                : "Transaction pending confirmation.",
+              wallet: receiver,
+              status: confirmation.confirmed
+                ? "Jupiter swap confirmed"
+                : "Jupiter swap submitted",
+              txHash: broadcast.txHash,
+            });
+
+            await updateTransaction({
+              txHash: broadcast.txHash,
+              status: confirmation.confirmed
+                ? "jupiter_confirmed"
+                : "jupiter_submitted",
+            });
+          }
+        } catch (error) {
+          setSwapState({
+            loading: false,
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Jupiter swap failed.",
+            wallet: "",
+            status: "",
+            txHash: "",
+          });
+        }
+      }
+
+      if (provider === "uniswap") {
+        try {
+          setSwapState((prev) => ({
+            ...prev,
+            loading: true,
+            status: "Broadcasting Uniswap transaction...",
+          }));
+
+          const response = await fetch("/api/execute-uniswap", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tokenIn: fromToken,
+              tokenOut: normalizedToChain === "ethereum" ? "ETH" : fromToken,
+              amount,
+              chainId: getEvmChainId(),
+            }),
+          });
+
+          const data = await response.json();
+
+          if (data.success && data.transaction) {
+            const broadcast = await broadcastEvmTransaction({
+              to: data.transaction.to,
+              data: data.transaction.data,
+              value: data.transaction.value,
+            });
+
+            const confirmation = await confirmEvmTransaction(broadcast.txHash);
+
+            setSwapState({
+              loading: false,
+              success: confirmation.confirmed,
+              error: confirmation.confirmed
+                ? ""
+                : "Transaction pending confirmation.",
+              wallet: signState.wallet,
+              status: confirmation.confirmed
+                ? "Uniswap swap confirmed"
+                : "Uniswap swap submitted",
+              txHash: broadcast.txHash,
+            });
+
+            await updateTransaction({
+              txHash: broadcast.txHash,
+              status: confirmation.confirmed
+                ? "uniswap_confirmed"
+                : "uniswap_submitted",
+            });
+          }
+        } catch (error) {
+          setSwapState({
+            loading: false,
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Uniswap swap failed.",
+            wallet: "",
+            status: "",
+            txHash: "",
+          });
+        }
+      }
+    } catch (error) {
       setSwapState({
         loading: false,
         success: false,
-        error: message,
+        error: error instanceof Error ? error.message : "Execution failed.",
         wallet: "",
         status: "",
         txHash: "",
@@ -913,9 +750,13 @@ export default function ExecutionStatus({
 
   const explorerUrl =
     swapState.txHash &&
-    !["WORMHOLE_TRANSFER_READY", "CCTP_TRANSFER_READY"].includes(
-      swapState.txHash
-    )
+    ![
+      "WORMHOLE_TRANSFER_READY",
+      "CCTP_TRANSFER_READY",
+      "MAYAN_QUOTE_READY",
+      "JUPITER_SWAP_TRANSACTION_READY",
+      "UNISWAP_TRANSACTION_READY",
+    ].includes(swapState.txHash)
       ? selectedProvider === "jupiter"
         ? `https://solscan.io/tx/${swapState.txHash}`
         : `https://etherscan.io/tx/${swapState.txHash}`
@@ -944,6 +785,18 @@ export default function ExecutionStatus({
           <br />
           <strong>{selectedProvider.toUpperCase()}</strong>
         </SuccessBox>
+      )}
+
+      {attemptedProviders.length > 0 && (
+        <StatusBox>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>
+            Orchestrator Attempted Providers
+          </div>
+
+          <div style={{ opacity: 0.85 }}>
+            {attemptedProviders.map((item) => item.toUpperCase()).join(" → ")}
+          </div>
+        </StatusBox>
       )}
 
       {availableRoutes.length > 0 && (
@@ -1027,12 +880,14 @@ export default function ExecutionStatus({
             onClick={startExecution}
             style={{ ...buttonStyle, marginTop: 14 }}
           >
-            Start Selected Executor
+            Start Orchestrated Execution
           </button>
         </SuccessBox>
       )}
 
-      {swapState.loading && <StatusBox>{swapState.status || "Broadcasting transaction..."}</StatusBox>}
+      {swapState.loading && (
+        <StatusBox>{swapState.status || "Broadcasting transaction..."}</StatusBox>
+      )}
 
       {swapState.error && <ErrorBox>{swapState.error}</ErrorBox>}
 
