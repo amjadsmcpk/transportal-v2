@@ -1,46 +1,46 @@
-import { buildCCTPTransfer } from "./buildTransfer";
+import type {
+  CctpExecutionResult,
+  CctpQuoteResult,
+} from "./types";
 
-import { CCTPTransferRequest } from "./types";
+import { buildCctpTransfer } from "./buildTransfer";
 
-export async function executeCCTPTransfer(
-  request: CCTPTransferRequest
-) {
-  try {
-    const transfer =
-      await buildCCTPTransfer(
-        request
-      );
+type ExecuteTransferParams = {
+  quote: CctpQuoteResult;
+  amount: string;
+  fromChain: string;
+  toChain: string;
+  token: string;
+  receiver: string;
+};
 
-    if (!transfer.success) {
-      return {
-        success: false,
+export async function executeCctpTransfer(
+  params: ExecuteTransferParams
+): Promise<CctpExecutionResult> {
+  const transfer =
+    await buildCctpTransfer({
+      amount: params.amount,
+      fromChain: params.fromChain,
+      toChain: params.toChain,
+      token: params.token,
+      receiver: params.receiver,
+    });
 
-        error:
-          "Transfer build failed",
-      };
-    }
-
-    return {
-      success: true,
-
-      protocol: "cctp",
-
-      txHash:
-        "cctp_" + Date.now(),
-
-      transfer,
-    };
-  } catch (error) {
-    console.error(
-      "CCTP Execution Error:",
-      error
+  if (!transfer.success) {
+    throw new Error(
+      "Failed to build CCTP transfer."
     );
-
-    return {
-      success: false,
-
-      error:
-        "CCTP execution failed",
-    };
   }
+
+  return {
+    success: true,
+
+    provider: "cctp",
+
+    txHash:
+      "CCTP_TRANSFER_READY",
+
+    status:
+      "CCTP native USDC transfer initialized",
+  };
 }

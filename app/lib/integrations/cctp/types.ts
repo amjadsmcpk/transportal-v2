@@ -1,25 +1,39 @@
-export type CCTPTransferRequest = {
+export type CctpQuoteParams = {
+  amount: string;
   fromChain: string;
-
   toChain: string;
-
   token: string;
-
-  amount: number;
-
-  walletAddress: string;
+  receiver: string;
 };
 
-export type CCTPQuote = {
-  estimatedTime: string;
-
+export type CctpQuoteResult = {
+  success: boolean;
+  provider: "cctp";
   bridgeFee: string;
+  estimatedTime: string;
+  route: string[];
+};
 
-  route: {
-    fromChain: string;
+export type CctpTransferBuildResult = {
+  success: boolean;
+  provider: "cctp";
+  sourceChain: string;
+  destinationChain: string;
+  token: string;
+  amount: string;
+  receiver: string;
+};
 
-    toChain: string;
+export type CctpExecutionResult = {
+  success: boolean;
+  provider: "cctp";
+  txHash: string;
+  status: string;
+};
 
-    token: string;
-  };
+export type CctpTrackingResult = {
+  success: boolean;
+  status: string;
+  completed: boolean;
+  attestationReady: boolean;
 };

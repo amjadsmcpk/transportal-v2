@@ -2,23 +2,76 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-type Provider = "mayan" | "jupiter" | "wormhole" | "cctp";
+type Provider = "mayan" | "jupiter" | "uniswap" | "wormhole" | "cctp";
 
 type LiveRoute = {
   provider: Provider;
   live: boolean;
   priority: number;
+  score: number;
   reason: string;
   quote?: unknown;
+  metrics: {
+    gasScore: number;
+    speedScore: number;
+    liquidityScore: number;
+    safetyScore: number;
+    compatibilityScore: number;
+  };
 };
 
-async function tryMayanRoute(payload: Record<string, unknown>) {
+type RouteInput = {
+  amount: string;
+  fromToken: string;
+  toToken: string;
+  fromChain: string;
+  toChain: string;
+  receiver: string;
+};
+
+function normalize(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function normalizeToken(value: string) {
+  return value.trim().toUpperCase();
+}
+
+function scoreRoute(metrics: LiveRoute["metrics"]) {
+  return Math.round(
+    metrics.gasScore * 0.18 +
+      metrics.speedScore * 0.22 +
+      metrics.liquidityScore * 0.25 +
+      metrics.safetyScore * 0.2 +
+      metrics.compatibilityScore * 0.15
+  );
+}
+
+function makeRoute(
+  provider: Provider,
+  priority: number,
+  reason: string,
+  metrics: LiveRoute["metrics"],
+  quote?: unknown
+): LiveRoute {
+  return {
+    provider,
+    live: true,
+    priority,
+    score: scoreRoute(metrics),
+    reason,
+    quote,
+    metrics,
+  };
+}
+
+async function tryMayanRoute(payload: RouteInput): Promise<LiveRoute | null> {
   try {
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.VERCEL_URL
+      (process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000";
+        : "http://localhost:3000");
 
     const res = await fetch(`${baseUrl}/api/mayan-quote`, {
       method: "POST",
@@ -31,68 +84,132 @@ async function tryMayanRoute(payload: Record<string, unknown>) {
 
     const data = await res.json();
 
-    if (data.success && data.quote) {
-      return {
-        provider: "mayan",
-        live: true,
-        priority: 1,
-        reason: "Mayan live quote available for this route.",
-        quote: data.quote,
-      } satisfies LiveRoute;
+    if (!data.success || !data.quote) {
+      return null;
     }
 
-    return null;
+    return makeRoute(
+      "mayan",
+      1,
+      "Mayan live quote available. Strong bridge route for supported EVM and Solana transfers.",
+      {
+        gasScore: 76,
+        speedScore: 82,
+        liquidityScore: 88,
+        safetyScore: 84,
+        compatibilityScore: 86,
+      },
+      data.quote
+    );
   } catch {
     return null;
   }
 }
 
-function getFallbackRoutes(
-  fromChain: string,
-  toChain: string,
-  fromToken: string,
-  toToken: string
-): LiveRoute[] {
-  const sourceChain = fromChain.toLowerCase();
-  const destinationChain = toChain.toLowerCase();
-  const sourceToken = fromToken.toUpperCase();
-  const destinationToken = toToken.toUpperCase();
+function getCandidateRoutes(input: RouteInput): LiveRoute[] {
+  const fromChain = normalize(input.fromChain);
+  const toChain = normalize(input.toChain);
+  const fromToken = normalizeToken(input.fromToken);
+  const toToken = normalizeToken(input.toToken);
 
   const routes: LiveRoute[] = [];
 
-  const involvesSolana =
-    sourceChain === "solana" || destinationChain === "solana";
+  const involvesSolana = fromChain === "solana" || toChain === "solana";
+  const isSolanaOnly = fromChain === "solana" && toChain === "solana";
 
-  const involvesUSDC =
-    sourceToken === "USDC" || destinationToken === "USDC";
+  const supportedEvmChains = ["ethereum", "base", "arbitrum", "polygon"];
+  const isEvmSource = supportedEvmChains.includes(fromChain);
+  const isEvmDestination = supportedEvmChains.includes(toChain);
+  const isEvmOnly = isEvmSource && isEvmDestination;
 
-  if (involvesSolana) {
-    routes.push({
-      provider: "jupiter",
-      live: true,
-      priority: 2,
-      reason:
-        "Solana route detected. Jupiter is available for Solana-side swap execution.",
-    });
+  const involvesUSDC = fromToken === "USDC" || toToken === "USDC";
+  const isSameChain = fromChain === toChain;
+  const isTokenSwap = fromToken !== toToken;
+
+  if (involvesSolana && isTokenSwap) {
+    routes.push(
+      makeRoute(
+        "jupiter",
+        2,
+        "Solana token swap detected. Jupiter is best for Solana-side swap execution.",
+        {
+          gasScore: 95,
+          speedScore: 92,
+          liquidityScore: 90,
+          safetyScore: 86,
+          compatibilityScore: 94,
+        }
+      )
+    );
   }
 
-  if (involvesUSDC) {
-    routes.push({
-      provider: "cctp",
-      live: true,
-      priority: 3,
-      reason:
-        "USDC route detected. CCTP is available for native stablecoin transfer planning.",
-    });
+  if (isSolanaOnly && !isTokenSwap) {
+    routes.push(
+      makeRoute(
+        "jupiter",
+        2,
+        "Solana route detected. Jupiter can prepare Solana-side execution.",
+        {
+          gasScore: 95,
+          speedScore: 90,
+          liquidityScore: 84,
+          safetyScore: 84,
+          compatibilityScore: 88,
+        }
+      )
+    );
   }
 
-  routes.push({
-    provider: "wormhole",
-    live: true,
-    priority: 4,
-    reason:
-      "Wormhole is available as a general cross-chain transfer route.",
-  });
+  if (isEvmOnly && isTokenSwap) {
+    routes.push(
+      makeRoute(
+        "uniswap",
+        2,
+        "EVM token swap detected. Uniswap is available for Ethereum-compatible swap execution.",
+        {
+          gasScore: fromChain === "ethereum" ? 70 : 86,
+          speedScore: fromChain === "ethereum" ? 75 : 88,
+          liquidityScore: 92,
+          safetyScore: 90,
+          compatibilityScore: 92,
+        }
+      )
+    );
+  }
+
+  if (involvesUSDC && !isSameChain) {
+    routes.push(
+      makeRoute(
+        "cctp",
+        1,
+        "Native USDC route detected. CCTP is preferred for Circle-native stablecoin transfer planning.",
+        {
+          gasScore: 88,
+          speedScore: 84,
+          liquidityScore: 96,
+          safetyScore: 96,
+          compatibilityScore: 88,
+        }
+      )
+    );
+  }
+
+  if (!isSameChain) {
+    routes.push(
+      makeRoute(
+        "wormhole",
+        3,
+        "Cross-chain route detected. Wormhole is available as a general bridge route.",
+        {
+          gasScore: 78,
+          speedScore: 80,
+          liquidityScore: 86,
+          safetyScore: 88,
+          compatibilityScore: 92,
+        }
+      )
+    );
+  }
 
   return routes;
 }
@@ -119,7 +236,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const payload = {
+    const input: RouteInput = {
       amount,
       fromToken,
       fromChain,
@@ -128,32 +245,38 @@ export async function POST(req: Request) {
       receiver,
     };
 
-    const mayanRoute = await tryMayanRoute(payload);
-
-    const fallbackRoutes = getFallbackRoutes(
-      fromChain,
-      toChain,
-      fromToken,
-      toToken
-    );
+    const mayanRoute = await tryMayanRoute(input);
+    const candidateRoutes = getCandidateRoutes(input);
 
     const availableRoutes = [
       ...(mayanRoute ? [mayanRoute] : []),
-      ...fallbackRoutes,
-    ].sort((a, b) => a.priority - b.priority);
+      ...candidateRoutes,
+    ].sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.priority - b.priority;
+    });
 
     if (availableRoutes.length === 0) {
       return NextResponse.json({
         success: false,
         error: "No executable route found.",
+        input,
       });
     }
 
+    const selectedRoute = availableRoutes[0];
+
     return NextResponse.json({
       success: true,
-      selectedRoute: availableRoutes[0],
+      selectedRoute,
       availableRoutes,
-      payload,
+      decision: {
+        selectedProvider: selectedRoute.provider,
+        selectedScore: selectedRoute.score,
+        reason: selectedRoute.reason,
+        mode: "BEST_ROUTE_SCORE",
+      },
+      input,
     });
   } catch (error) {
     return NextResponse.json({

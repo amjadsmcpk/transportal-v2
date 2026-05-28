@@ -1,29 +1,31 @@
-import { CCTPTransferRequest } from "./types";
+import type {
+  CctpTransferBuildResult,
+} from "./types";
 
-export async function buildCCTPTransfer(
-  request: CCTPTransferRequest
-) {
-  try {
-    return {
-      success: true,
+type BuildCctpTransferParams = {
+  amount: string;
+  fromChain: string;
+  toChain: string;
+  token: string;
+  receiver: string;
+};
 
-      payload: {
-        protocol: "cctp",
+export async function buildCctpTransfer(
+  params: BuildCctpTransferParams
+): Promise<CctpTransferBuildResult> {
+  return {
+    success: true,
 
-        ...request,
-      },
-    };
-  } catch (error) {
-    console.error(
-      "CCTP Build Error:",
-      error
-    );
+    provider: "cctp",
 
-    return {
-      success: false,
+    sourceChain: params.fromChain,
 
-      error:
-        "Failed to build CCTP transfer",
-    };
-  }
+    destinationChain: params.toChain,
+
+    token: params.token,
+
+    amount: params.amount,
+
+    receiver: params.receiver,
+  };
 }
