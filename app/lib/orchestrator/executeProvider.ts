@@ -14,24 +14,32 @@ type ExecuteProviderParams = {
   userPublicKey?: string;
 };
 
-async function postJson(
-  url: string,
-  payload: Record<string, unknown>
-) {
+function getBaseUrl() {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
+  return "http://localhost:3000";
+}
+
+async function postJson(url: string, payload: Record<string, unknown>) {
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
+    cache: "no-store",
   });
 
   const data = await response.json();
 
   if (!response.ok || !data.success) {
-    throw new Error(
-      data.error || `Provider request failed: ${url}`
-    );
+    throw new Error(data.error || `Provider request failed: ${url}`);
   }
 
   return data;
@@ -40,17 +48,16 @@ async function postJson(
 export async function executeProvider(
   params: ExecuteProviderParams
 ): Promise<ExecutionResult> {
+  const baseUrl = getBaseUrl();
+
   try {
     if (params.provider === "jupiter") {
-      const data = await postJson("/api/execute-jupiter", {
-        inputMint:
-          "So11111111111111111111111111111111111111112",
-        outputMint:
-          "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      const data = await postJson(`${baseUrl}/api/execute-jupiter`, {
+        inputMint: "So11111111111111111111111111111111111111112",
+        outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
         amount: "1000000",
         slippageBps: 50,
-        userPublicKey:
-          params.userPublicKey || params.receiver,
+        userPublicKey: params.userPublicKey || params.receiver,
       });
 
       return {
@@ -60,14 +67,12 @@ export async function executeProvider(
           data.txHash ||
           data.signature ||
           "JUPITER_SWAP_TRANSACTION_READY",
-        status:
-          data.status ||
-          "Jupiter swap transaction prepared",
+        status: data.status || "Jupiter swap transaction prepared",
       };
     }
 
     if (params.provider === "uniswap") {
-      const data = await postJson("/api/execute-uniswap", {
+      const data = await postJson(`${baseUrl}/api/execute-uniswap`, {
         tokenIn: params.fromToken,
         tokenOut: params.toToken || params.fromToken,
         amount: params.amount,
@@ -77,17 +82,13 @@ export async function executeProvider(
       return {
         success: true,
         provider: "uniswap",
-        txHash:
-          data.txHash ||
-          "UNISWAP_TRANSACTION_READY",
-        status:
-          data.status ||
-          "Uniswap transaction prepared",
+        txHash: data.txHash || "UNISWAP_TRANSACTION_READY",
+        status: data.status || "Uniswap transaction prepared",
       };
     }
 
     if (params.provider === "wormhole") {
-      const data = await postJson("/api/execute-wormhole", {
+      const data = await postJson(`${baseUrl}/api/execute-wormhole`, {
         amount: params.amount,
         fromChain: params.fromChain,
         toChain: params.toChain,
@@ -98,17 +99,13 @@ export async function executeProvider(
       return {
         success: true,
         provider: "wormhole",
-        txHash:
-          data.txHash ||
-          "WORMHOLE_TRANSFER_READY",
-        status:
-          data.status ||
-          "Wormhole transfer initialized",
+        txHash: data.txHash || "WORMHOLE_TRANSFER_READY",
+        status: data.status || "Wormhole transfer initialized",
       };
     }
 
     if (params.provider === "cctp") {
-      const data = await postJson("/api/execute-cctp", {
+      const data = await postJson(`${baseUrl}/api/execute-cctp`, {
         amount: params.amount,
         fromChain: params.fromChain,
         toChain: params.toChain,
@@ -119,17 +116,13 @@ export async function executeProvider(
       return {
         success: true,
         provider: "cctp",
-        txHash:
-          data.txHash ||
-          "CCTP_TRANSFER_READY",
-        status:
-          data.status ||
-          "CCTP transfer initialized",
+        txHash: data.txHash || "CCTP_TRANSFER_READY",
+        status: data.status || "CCTP transfer initialized",
       };
     }
 
     if (params.provider === "mayan") {
-      const data = await postJson("/api/mayan-quote", {
+      const data = await postJson(`${baseUrl}/api/mayan-quote`, {
         amount: params.amount,
         fromToken: params.fromToken,
         fromChain: params.fromChain,
@@ -141,11 +134,8 @@ export async function executeProvider(
       return {
         success: true,
         provider: "mayan",
-        txHash:
-          data.txHash ||
-          "MAYAN_QUOTE_READY",
-        status:
-          "Mayan quote prepared for execution",
+        txHash: data.txHash || "MAYAN_QUOTE_READY",
+        status: "Mayan quote prepared for execution",
       };
     }
 
