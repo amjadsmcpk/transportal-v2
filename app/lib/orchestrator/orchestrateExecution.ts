@@ -1,4 +1,5 @@
 import { rankRoutes } from "./rankRoutes";
+
 import { executeProvider } from "./executeProvider";
 
 import type {
@@ -8,6 +9,20 @@ import type {
 
 type OrchestrateExecutionParams = {
   providers: ProviderName[];
+
+  amount: string;
+
+  fromChain: string;
+
+  toChain: string;
+
+  fromToken: string;
+
+  toToken?: string;
+
+  receiver: string;
+
+  userPublicKey?: string;
 };
 
 export async function orchestrateExecution(
@@ -24,27 +39,52 @@ export async function orchestrateExecution(
       route.provider
     );
 
-    const result =
-      await executeProvider({
-        provider:
-          route.provider,
-      });
+    try {
+      const result =
+        await executeProvider({
+          provider:
+            route.provider,
 
-    if (result.success) {
-      return {
-        success: true,
+          amount:
+            params.amount,
 
-        selectedProvider:
-          route.provider,
+          fromChain:
+            params.fromChain,
 
-        attemptedProviders,
+          toChain:
+            params.toChain,
 
-        txHash:
-          result.txHash,
+          fromToken:
+            params.fromToken,
 
-        status:
-          result.status,
-      };
+          toToken:
+            params.toToken,
+
+          receiver:
+            params.receiver,
+
+          userPublicKey:
+            params.userPublicKey,
+        });
+
+      if (result.success) {
+        return {
+          success: true,
+
+          selectedProvider:
+            route.provider,
+
+          attemptedProviders,
+
+          txHash:
+            result.txHash,
+
+          status:
+            result.status,
+        };
+      }
+    } catch {
+      continue;
     }
   }
 
