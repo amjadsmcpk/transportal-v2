@@ -163,28 +163,20 @@ export default function ExecutionStatus({
     try {
       await fetch("/api/transactions/create", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-    } catch {
-      // Do not block execution if DB save fails.
-    }
+    } catch {}
   };
 
   const updateTransaction = async (payload: Record<string, unknown>) => {
     try {
       await fetch("/api/transactions/update", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-    } catch {
-      // Do not block tracking if DB update fails.
-    }
+    } catch {}
   };
 
   const getEvmChainId = () => {
@@ -203,9 +195,7 @@ export default function ExecutionStatus({
       try {
         const routeRes = await fetch("/api/select-live-route", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             amount,
             fromToken,
@@ -270,10 +260,7 @@ export default function ExecutionStatus({
           });
         }
 
-        const gasRes = await fetch("/api/check-gas", {
-          method: "POST",
-        });
-
+        const gasRes = await fetch("/api/check-gas", { method: "POST" });
         const gasData = await gasRes.json();
 
         if (gasData.success) {
@@ -289,12 +276,8 @@ export default function ExecutionStatus({
         if (selected?.quote) {
           const slippageRes = await fetch("/api/check-slippage", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              quote: selected.quote,
-            }),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ quote: selected.quote }),
           });
 
           const slippageData = await slippageRes.json();
@@ -338,23 +321,12 @@ export default function ExecutionStatus({
   }, [amount, fromToken, fromChain, toChain, receiver, route, normalizedToChain]);
 
   useEffect(() => {
-    if (!swapState.txHash) {
-      return;
-    }
-
-    if (
-      swapState.txHash === "WORMHOLE_EXECUTOR_READY" ||
-      swapState.txHash === "CCTP_EXECUTOR_READY"
-    ) {
-      return;
-    }
+    if (!swapState.txHash) return;
 
     let stopped = false;
 
     const verifyDestination = async () => {
-      if (!normalizedToChain.includes("solana")) {
-        return;
-      }
+      if (!normalizedToChain.includes("solana")) return;
 
       setDestinationState({
         loading: true,
@@ -366,12 +338,8 @@ export default function ExecutionStatus({
       try {
         const verifyRes = await fetch("/api/verify-solana", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            address: receiver,
-          }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: receiver }),
         });
 
         const verifyData = await verifyRes.json();
@@ -414,24 +382,15 @@ export default function ExecutionStatus({
     };
 
     const pollStatus = async () => {
-      if (stopped) {
-        return;
-      }
+      if (stopped) return;
 
       try {
-        setTrackingState((prev) => ({
-          ...prev,
-          loading: true,
-        }));
+        setTrackingState((prev) => ({ ...prev, loading: true }));
 
         const res = await fetch("/api/mayan-status", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            txHash: swapState.txHash,
-          }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ txHash: swapState.txHash }),
         });
 
         const data = await res.json();
@@ -480,9 +439,7 @@ export default function ExecutionStatus({
           await verifyDestination();
         }
 
-        if (refunded) {
-          stopped = true;
-        }
+        if (refunded) stopped = true;
       } catch {
         setTrackingState({
           loading: false,
@@ -525,9 +482,7 @@ export default function ExecutionStatus({
   const unsafeExecution = !gasState.safe || !slippageState.safe;
 
   const requestWalletSignature = async () => {
-    if (unsafeExecution) {
-      return;
-    }
+    if (unsafeExecution) return;
 
     try {
       setSignState({
@@ -588,9 +543,7 @@ export default function ExecutionStatus({
 
         const response = await fetch("/api/execute-jupiter", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             inputMint: "So11111111111111111111111111111111111111112",
             outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -607,15 +560,12 @@ export default function ExecutionStatus({
         }
 
         const broadcast = await broadcastSolanaTransaction(data.swapTransaction);
-
         const confirmation = await confirmSolanaTransaction(broadcast.txHash);
 
         setSwapState({
           loading: false,
           success: confirmation.confirmed,
-          error: confirmation.confirmed
-            ? ""
-            : "Transaction pending confirmation.",
+          error: confirmation.confirmed ? "" : "Transaction pending confirmation.",
           wallet: receiver,
           status: confirmation.confirmed
             ? "Jupiter swap confirmed"
@@ -643,8 +593,7 @@ export default function ExecutionStatus({
         setSwapState({
           loading: false,
           success: false,
-          error:
-            error instanceof Error ? error.message : "Jupiter swap failed.",
+          error: error instanceof Error ? error.message : "Jupiter swap failed.",
           wallet: "",
           status: "",
           txHash: "",
@@ -667,9 +616,7 @@ export default function ExecutionStatus({
 
         const response = await fetch("/api/execute-uniswap", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             tokenIn: fromToken,
             tokenOut: normalizedToChain === "ethereum" ? "ETH" : fromToken,
@@ -695,9 +642,7 @@ export default function ExecutionStatus({
         setSwapState({
           loading: false,
           success: confirmation.confirmed,
-          error: confirmation.confirmed
-            ? ""
-            : "Transaction pending confirmation.",
+          error: confirmation.confirmed ? "" : "Transaction pending confirmation.",
           wallet: signState.wallet,
           status: confirmation.confirmed
             ? "Uniswap swap confirmed"
@@ -725,8 +670,7 @@ export default function ExecutionStatus({
         setSwapState({
           loading: false,
           success: false,
-          error:
-            error instanceof Error ? error.message : "Uniswap swap failed.",
+          error: error instanceof Error ? error.message : "Uniswap swap failed.",
           wallet: "",
           status: "",
           txHash: "",
@@ -737,29 +681,152 @@ export default function ExecutionStatus({
     }
 
     if (selectedProvider === "wormhole") {
-      setSwapState({
-        loading: false,
-        success: true,
-        error: "",
-        wallet: signState.wallet,
-        status: "Wormhole executor connected",
-        txHash: "WORMHOLE_EXECUTOR_READY",
-      });
+      try {
+        setSwapState({
+          loading: true,
+          success: false,
+          error: "",
+          wallet: signState.wallet,
+          status: "Broadcasting Wormhole transfer...",
+          txHash: "",
+        });
 
-      return;
+        const response = await fetch("/api/execute-wormhole", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount,
+            fromChain,
+            toChain,
+            token: fromToken,
+            receiver,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.success || !data.txHash) {
+          throw new Error(data.error || "Wormhole execution failed.");
+        }
+
+        setSwapState({
+          loading: false,
+          success: true,
+          error: "",
+          wallet: signState.wallet,
+          status: data.status || "Wormhole transfer submitted",
+          txHash: data.txHash,
+        });
+
+        setTrackingState({
+          loading: false,
+          status: data.status || "WORMHOLE_TRANSFER_INITIALIZED",
+          completed: false,
+          refunded: false,
+          error: "",
+        });
+
+        await saveTransaction({
+          wallet: signState.wallet,
+          receiver,
+          fromChain,
+          toChain,
+          fromToken,
+          amount,
+          route,
+          provider: "wormhole",
+          txHash: data.txHash,
+          status: data.status || "wormhole_submitted",
+        });
+
+        return;
+      } catch (error) {
+        setSwapState({
+          loading: false,
+          success: false,
+          error:
+            error instanceof Error ? error.message : "Wormhole transfer failed.",
+          wallet: "",
+          status: "",
+          txHash: "",
+        });
+
+        return;
+      }
     }
 
     if (selectedProvider === "cctp") {
-      setSwapState({
-        loading: false,
-        success: true,
-        error: "",
-        wallet: signState.wallet,
-        status: "CCTP executor connected",
-        txHash: "CCTP_EXECUTOR_READY",
-      });
+      try {
+        setSwapState({
+          loading: true,
+          success: false,
+          error: "",
+          wallet: signState.wallet,
+          status: "Broadcasting CCTP transfer...",
+          txHash: "",
+        });
 
-      return;
+        const response = await fetch("/api/execute-cctp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount,
+            fromChain,
+            toChain,
+            token: fromToken,
+            receiver,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.success || !data.txHash) {
+          throw new Error(data.error || "CCTP execution failed.");
+        }
+
+        setSwapState({
+          loading: false,
+          success: true,
+          error: "",
+          wallet: signState.wallet,
+          status: data.status || "CCTP transfer submitted",
+          txHash: data.txHash,
+        });
+
+        setTrackingState({
+          loading: false,
+          status: data.status || "CCTP_TRANSFER_INITIALIZED",
+          completed: false,
+          refunded: false,
+          error: "",
+        });
+
+        await saveTransaction({
+          wallet: signState.wallet,
+          receiver,
+          fromChain,
+          toChain,
+          fromToken,
+          amount,
+          route,
+          provider: "cctp",
+          txHash: data.txHash,
+          status: data.status || "cctp_submitted",
+        });
+
+        return;
+      } catch (error) {
+        setSwapState({
+          loading: false,
+          success: false,
+          error: error instanceof Error ? error.message : "CCTP transfer failed.",
+          wallet: "",
+          status: "",
+          txHash: "",
+        });
+
+        return;
+      }
     }
 
     if (selectedProvider !== "mayan") {
@@ -846,7 +913,7 @@ export default function ExecutionStatus({
 
   const explorerUrl =
     swapState.txHash &&
-    !["WORMHOLE_EXECUTOR_READY", "CCTP_EXECUTOR_READY"].includes(
+    !["WORMHOLE_TRANSFER_READY", "CCTP_TRANSFER_READY"].includes(
       swapState.txHash
     )
       ? selectedProvider === "jupiter"
@@ -958,17 +1025,14 @@ export default function ExecutionStatus({
           <button
             type="button"
             onClick={startExecution}
-            style={{
-              ...buttonStyle,
-              marginTop: 14,
-            }}
+            style={{ ...buttonStyle, marginTop: 14 }}
           >
             Start Selected Executor
           </button>
         </SuccessBox>
       )}
 
-      {swapState.loading && <StatusBox>Broadcasting transaction...</StatusBox>}
+      {swapState.loading && <StatusBox>{swapState.status || "Broadcasting transaction..."}</StatusBox>}
 
       {swapState.error && <ErrorBox>{swapState.error}</ErrorBox>}
 
