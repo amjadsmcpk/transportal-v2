@@ -7,7 +7,7 @@ import { broadcastSolanaTransaction } from "../lib/execution/broadcastSolanaTran
 import { confirmSolanaTransaction } from "../lib/execution/confirmSolanaTransaction";
 import { broadcastEvmTransaction } from "../lib/execution/broadcastEvmTransaction";
 import { confirmEvmTransaction } from "../lib/execution/confirmEvmTransaction";
-
+import { executeMayanEvmSwap } from "../lib/executeMayanEvmSwap";
 type ExecutionStatusProps = {
   amount: string;
   fromToken: string;
@@ -575,6 +575,51 @@ export default function ExecutionStatus({
       }
 
       const provider = String(orchestrationData.selectedProvider || "");
+      if (provider === "mayan") {
+  if (!quoteState.quote) {
+    throw new Error(
+      "Mayan quote missing. Cannot execute transaction."
+    );
+  }
+
+  setSwapState({
+    loading: true,
+    success: false,
+    error: "",
+    wallet: signState.wallet,
+    status: "Opening MetaMask for Mayan transaction...",
+    txHash: "",
+  });
+
+  const result = await executeMayanEvmSwap({
+    quote: quoteState.quote,
+    receiver,
+  });
+
+  setSwapState({
+    loading: false,
+    success: true,
+    error: "",
+    wallet: result.wallet,
+    status: result.status,
+    txHash: result.txHash,
+  });
+
+  await saveTransaction({
+    wallet: result.wallet,
+    receiver,
+    fromChain,
+    toChain,
+    fromToken,
+    amount,
+    route,
+    provider: "mayan",
+    txHash: result.txHash,
+    status: result.status,
+  });
+
+  return;
+}
       const txHash = String(orchestrationData.txHash || "");
       const status = String(
         orchestrationData.status || "Execution initialized"
