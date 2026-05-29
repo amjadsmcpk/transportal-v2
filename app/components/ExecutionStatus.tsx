@@ -558,9 +558,20 @@ export default function ExecutionStatus({
       const orchestrationData = await orchestrationResponse.json();
 
       if (!orchestrationData.success) {
-        throw new Error(
-          orchestrationData.error || "Execution orchestration failed."
+        const debugMessage = JSON.stringify(
+          {
+            error: orchestrationData.error,
+            status: orchestrationData.status,
+            selectedProvider: orchestrationData.selectedProvider,
+            txHash: orchestrationData.txHash,
+            providerErrors: orchestrationData.providerErrors,
+            attemptedProviders: orchestrationData.attemptedProviders,
+          },
+          null,
+          2
         );
+
+        throw new Error(debugMessage);
       }
 
       const provider = String(orchestrationData.selectedProvider || "");
@@ -740,7 +751,10 @@ export default function ExecutionStatus({
       setSwapState({
         loading: false,
         success: false,
-        error: error instanceof Error ? error.message : "Execution failed.",
+        error:
+          error instanceof Error
+            ? error.message
+            : JSON.stringify(error, null, 2),
         wallet: "",
         status: "",
         txHash: "",
@@ -980,6 +994,11 @@ function ErrorBox({ children }: { children: React.ReactNode }) {
         borderRadius: 14,
         background: "rgba(255,80,80,0.12)",
         color: "#ffb4b4",
+        whiteSpace: "pre-wrap",
+        overflowWrap: "anywhere",
+        fontFamily:
+          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        fontSize: 12,
       }}
     >
       {children}
