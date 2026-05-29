@@ -576,10 +576,37 @@ export default function ExecutionStatus({
 
       const provider = String(orchestrationData.selectedProvider || "");
       if (provider === "mayan") {
-  if (!quoteState.quote) {
-    throw new Error(
-      "Mayan quote missing. Cannot execute transaction."
-    );
+  let mayanQuote = quoteState.quote;
+
+  if (!mayanQuote) {
+    const quoteRes = await fetch("/api/mayan-quote", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount,
+        fromToken,
+        fromChain,
+        toChain,
+        toToken:
+          normalizedToChain === "solana"
+            ? "SOL"
+            : fromToken,
+        receiver,
+      }),
+    });
+
+    const quoteData = await quoteRes.json();
+
+    if (!quoteData.success || !quoteData.quote) {
+      throw new Error(
+        quoteData.error ||
+        "Failed to fetch Mayan quote."
+      );
+    }
+
+    mayanQuote = quoteData.quote;
   }
 
   setSwapState({
@@ -592,7 +619,7 @@ export default function ExecutionStatus({
   });
 
   const result = await executeMayanEvmSwap({
-    quote: quoteState.quote,
+    quote: mayanQuote,
     receiver,
   });
 
