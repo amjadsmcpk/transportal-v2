@@ -544,15 +544,15 @@ export default function ExecutionStatus({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          providers: ["mayan", "jupiter", "uniswap", "wormhole", "cctp"],
-          amount,
-          fromChain,
-          toChain,
-          fromToken,
-          toToken: normalizedToChain === "solana" ? "SOL" : fromToken,
-          receiver,
-          userPublicKey: receiver,
-        }),
+  providers: ["mayan"],
+  amount,
+  fromChain,
+  toChain,
+  fromToken,
+  toToken: normalizedToChain === "solana" ? "SOL" : fromToken,
+  receiver,
+  userPublicKey: signState.wallet,
+}),
       });
 
       const orchestrationData = await orchestrationResponse.json();
