@@ -138,10 +138,18 @@ async function fetchMayanTokens(): Promise<MayanToken[]> {
 
   const data = await res.json();
 
-  if (!Array.isArray(data)) {
-    throw new Error("Mayan tokens response was not an array.");
-  }
+console.log(
+  "MAYAN TOKENS RESPONSE",
+  JSON.stringify(data).slice(0, 5000)
+);
 
+return Array.isArray(data)
+  ? data
+  : Array.isArray(data.tokens)
+    ? data.tokens
+    : Array.isArray(data.data)
+      ? data.data
+      : [];
   return data as MayanToken[];
 }
 
