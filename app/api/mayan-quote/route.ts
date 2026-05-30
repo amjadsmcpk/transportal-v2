@@ -138,19 +138,29 @@ async function fetchMayanTokens(): Promise<MayanToken[]> {
 
   const data = await res.json();
 
-console.log(
-  "MAYAN TOKENS RESPONSE",
-  JSON.stringify(data).slice(0, 5000)
-);
+  console.log(
+    "MAYAN TOKENS RESPONSE",
+    JSON.stringify(data).slice(0, 5000)
+  );
 
-return Array.isArray(data)
-  ? data
-  : Array.isArray(data.tokens)
-    ? data.tokens
-    : Array.isArray(data.data)
-      ? data.data
-      : [];
-  return data as MayanToken[];
+  if (Array.isArray(data)) {
+    return data as MayanToken[];
+  }
+
+  if (data && typeof data === "object") {
+    return Object.entries(data).flatMap(([chain, tokens]) => {
+      if (!Array.isArray(tokens)) {
+        return [];
+      }
+
+      return tokens.map((token) => ({
+        ...(token as MayanToken),
+        chain,
+      }));
+    });
+  }
+
+  return [];
 }
 
 function findToken(
