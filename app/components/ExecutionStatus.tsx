@@ -193,7 +193,7 @@ export default function ExecutionStatus({
   useEffect(() => {
     const prepareExecution = async () => {
       try {
-        const routeRes = await fetch("/api/select-live-route", {
+        const routeRes = await fetch("/api/transportal/prepare", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -225,8 +225,16 @@ export default function ExecutionStatus({
           return;
         }
 
-        const selected = routeData.selectedRoute;
-        const routes = routeData.availableRoutes || [];
+       const selected = routeData.success
+  ? {
+      provider: routeData.provider,
+      quote: routeData.quote,
+      reason: "Transportal Core prepared a live Mayan execution route.",
+      priority: 1,
+    }
+  : null;
+
+const routes = selected ? [selected] : [];
 
         setSelectedProvider(String(selected?.provider || ""));
 
@@ -540,8 +548,8 @@ export default function ExecutionStatus({
         txHash: "",
       });
 
-      const orchestrationResponse = await fetch("/api/orchestrate-execution", {
-        method: "POST",
+const orchestrationResponse = await fetch("/api/transportal/prepare", {
+          method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
   providers: ["mayan"],
@@ -555,59 +563,31 @@ export default function ExecutionStatus({
 }),
       });
 
-      const orchestrationData = await orchestrationResponse.json();
+   const orchestrationData = await orchestrationResponse.json();
 
-      if (!orchestrationData.success) {
-        const debugMessage = JSON.stringify(
-          {
-            error: orchestrationData.error,
-            status: orchestrationData.status,
-            selectedProvider: orchestrationData.selectedProvider,
-            txHash: orchestrationData.txHash,
-            providerErrors: orchestrationData.providerErrors,
-            attemptedProviders: orchestrationData.attemptedProviders,
-          },
-          null,
-          2
-        );
+if (!orchestrationData.success) {
+  throw new Error(
+    orchestrationData.error || "Transportal execution failed."
+  );
+}
 
-        throw new Error(debugMessage);
-      }
+const provider = String(
+  orchestrationData.provider ||
+  orchestrationData.selectedProvider ||
+  ""
+);
 
-      const provider = String(orchestrationData.selectedProvider || "");
-      if (provider === "mayan") {
-  let mayanQuote = quoteState.quote;
+if (provider === "mayan") {
+  const mayanQuote =
+    orchestrationData.quote as Record<string, unknown> | null;
 
   if (!mayanQuote) {
-    const quoteRes = await fetch("/api/mayan-quote", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        amount,
-        fromToken,
-        fromChain,
-        toChain,
-        toToken:
-          normalizedToChain === "solana"
-            ? "SOL"
-            : fromToken,
-        receiver,
-      }),
-    });
-
-    const quoteData = await quoteRes.json();
-
-    if (!quoteData.success || !quoteData.quote) {
-      throw new Error(
-        quoteData.error ||
-        "Failed to fetch Mayan quote."
-      );
-    }
-
-    mayanQuote = quoteData.quote;
+    throw new Error(
+      "Transportal Core did not return a Mayan quote."
+    );
   }
+
+  setSelectedProvider("mayan");
 
   setSwapState({
     loading: true,
