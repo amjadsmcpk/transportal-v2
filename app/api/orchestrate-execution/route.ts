@@ -1,3 +1,4 @@
+import { prepareExecution } from "@/app/lib/transportal-core/prepareExecution";
 import { NextResponse } from "next/server";
 
 import { orchestrateExecution } from "@/app/lib/orchestrator/orchestrateExecution";
@@ -68,7 +69,26 @@ export async function POST(req: Request) {
         providerErrors: {},
       });
     }
+const executionPlan = await prepareExecution({
+  amount,
+  fromChain,
+  toChain,
+  fromToken,
+  toToken,
+  receiver,
+});
 
+if (!executionPlan.success) {
+  return NextResponse.json({
+    success: false,
+    selectedProvider: "mayan",
+    attemptedProviders: [],
+    txHash: null,
+    status: "Transportal preparation failed.",
+    error: executionPlan.error,
+    debug: executionPlan.debug,
+  });
+}
     const result = (await orchestrateExecution({
       providers,
       amount,
