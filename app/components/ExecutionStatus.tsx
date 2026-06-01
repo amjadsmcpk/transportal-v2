@@ -3,11 +3,8 @@
 import { useEffect, useState } from "react";
 
 import { getEvmSigner } from "../lib/getEvmSigner";
-import { broadcastSolanaTransaction } from "../lib/execution/broadcastSolanaTransaction";
-import { confirmSolanaTransaction } from "../lib/execution/confirmSolanaTransaction";
-import { broadcastEvmTransaction } from "../lib/execution/broadcastEvmTransaction";
-import { confirmEvmTransaction } from "../lib/execution/confirmEvmTransaction";
 import { executeMayanEvmSwap } from "../lib/executeMayanEvmSwap";
+
 type ExecutionStatusProps = {
   amount: string;
   fromToken: string;
@@ -17,71 +14,29 @@ type ExecutionStatusProps = {
   route: string;
 };
 
-type QuoteState = {
-  loading: boolean;
+type TransferPhase =
+  | "preparing"
+  | "ready"
+  | "signing"
+  | "sending"
+  | "confirming"
+  | "completed"
+  | "failed";
+
+type PreparedPlan = {
   success: boolean;
-  error: string;
-  quote: Record<string, unknown> | null;
+  provider?: string;
+  quote?: Record<string, unknown>;
+  error?: string;
+  debug?: Record<string, unknown>;
 };
 
-type ExecutionState = {
-  loading: boolean;
-  success: boolean;
-  error: string;
-};
-
-type SignState = {
-  loading: boolean;
-  success: boolean;
+type TransferState = {
+  phase: TransferPhase;
+  message: string;
   error: string;
   wallet: string;
-  signature: string;
-};
-
-type SwapState = {
-  loading: boolean;
-  success: boolean;
-  error: string;
-  wallet: string;
-  status: string;
   txHash: string;
-};
-
-type TrackingState = {
-  loading: boolean;
-  status: string;
-  completed: boolean;
-  refunded: boolean;
-  error: string;
-};
-
-type DestinationState = {
-  loading: boolean;
-  verified: boolean;
-  balance: string;
-  error: string;
-};
-
-type GasState = {
-  loading: boolean;
-  safe: boolean;
-  gasGwei: string;
-  message: string;
-  error: string;
-};
-
-type SlippageState = {
-  loading: boolean;
-  safe: boolean;
-  percent: string;
-  message: string;
-  error: string;
-};
-
-type RouteItem = {
-  provider: string;
-  reason: string;
-  priority: number;
 };
 
 export default function ExecutionStatus({
@@ -92,110 +47,36 @@ export default function ExecutionStatus({
   receiver,
   route,
 }: ExecutionStatusProps) {
-  const [quoteState, setQuoteState] = useState<QuoteState>({
-    loading: true,
-    success: false,
-    error: "",
-    quote: null,
-  });
+  const [plan, setPlan] = useState<PreparedPlan | null>(null);
 
-  const [executionState, setExecutionState] = useState<ExecutionState>({
-    loading: false,
-    success: false,
-    error: "",
-  });
-
-  const [signState, setSignState] = useState<SignState>({
-    loading: false,
-    success: false,
+  const [state, setState] = useState<TransferState>({
+    phase: "preparing",
+    message: "Preparing your transfer...",
     error: "",
     wallet: "",
-    signature: "",
-  });
-
-  const [swapState, setSwapState] = useState<SwapState>({
-    loading: false,
-    success: false,
-    error: "",
-    wallet: "",
-    status: "",
     txHash: "",
   });
 
-  const [trackingState, setTrackingState] = useState<TrackingState>({
-    loading: false,
-    status: "",
-    completed: false,
-    refunded: false,
-    error: "",
-  });
-
-  const [destinationState, setDestinationState] = useState<DestinationState>({
-    loading: false,
-    verified: false,
-    balance: "",
-    error: "",
-  });
-
-  const [gasState, setGasState] = useState<GasState>({
-    loading: false,
-    safe: true,
-    gasGwei: "",
-    message: "",
-    error: "",
-  });
-
-  const [slippageState, setSlippageState] = useState<SlippageState>({
-    loading: false,
-    safe: true,
-    percent: "",
-    message: "",
-    error: "",
-  });
-
-  const [selectedProvider, setSelectedProvider] = useState("");
-  const [availableRoutes, setAvailableRoutes] = useState<RouteItem[]>([]);
-  const [attemptedProviders, setAttemptedProviders] = useState<string[]>([]);
-
   const normalizedToChain = toChain.toLowerCase();
 
-  const saveTransaction = async (payload: Record<string, unknown>) => {
-    try {
-      await fetch("/api/transactions/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch {}
-  };
-
-  const updateTransaction = async (payload: Record<string, unknown>) => {
-    try {
-      await fetch("/api/transactions/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch {}
-  };
-
-  const getEvmChainId = () => {
-    const chain = fromChain.toLowerCase();
-
-    if (chain === "ethereum") return 1;
-    if (chain === "base") return 8453;
-    if (chain === "arbitrum") return 42161;
-    if (chain === "polygon") return 137;
-
-    return 1;
-  };
-
   useEffect(() => {
-    const prepareExecution = async () => {
+    let stopped = false;
+
+    async function prepareTransfer() {
       try {
-        const routeRes = await fetch("/api/transportal/prepare", {
+        setState({
+          phase: "preparing",
+          message: "Preparing your transfer...",
+          error: "",
+          wallet: "",
+          txHash: "",
+        });
+
+        const res = await fetch("/api/transportal/prepare", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
             amount,
             fromToken,
@@ -206,763 +87,251 @@ export default function ExecutionStatus({
           }),
         });
 
-        const routeData = await routeRes.json();
+        const data = (await res.json()) as PreparedPlan;
 
-        if (!routeData.success) {
-          setQuoteState({
-            loading: false,
-            success: false,
-            error: routeData.error || "No live route available.",
-            quote: null,
+        if (stopped) return;
+
+        if (!data.success || !data.quote) {
+          setPlan(null);
+          setState({
+            phase: "failed",
+            message: "",
+            error: cleanError(data.error || "This transfer cannot be prepared."),
+            wallet: "",
+            txHash: "",
           });
-
-          setExecutionState({
-            loading: false,
-            success: false,
-            error: "",
-          });
-
           return;
         }
 
-       const selected = routeData.success
-  ? {
-      provider: routeData.provider,
-      quote: routeData.quote,
-      reason: "Transportal Core prepared a live Mayan execution route.",
-      priority: 1,
-    }
-  : null;
-
-const routes = selected ? [selected] : [];
-
-        setSelectedProvider(String(selected?.provider || ""));
-
-        setAvailableRoutes(
-          routes.map(
-            (item: {
-              provider?: string;
-              reason?: string;
-              priority?: number;
-            }) => ({
-              provider: String(item.provider || ""),
-              reason: String(item.reason || ""),
-              priority: Number(item.priority || 0),
-            })
-          )
-        );
-
-        if (selected?.provider === "mayan" && selected?.quote) {
-          setQuoteState({
-            loading: false,
-            success: true,
-            error: "",
-            quote: selected.quote as Record<string, unknown>,
-          });
-        } else {
-          setQuoteState({
-            loading: false,
-            success: true,
-            error: "",
-            quote: null,
-          });
-        }
-
-        const gasRes = await fetch("/api/check-gas", { method: "POST" });
-        const gasData = await gasRes.json();
-
-        if (gasData.success) {
-          setGasState({
-            loading: false,
-            safe: Boolean(gasData.safeToProceed),
-            gasGwei: String(gasData.gasGwei ?? ""),
-            message: gasData.message || "",
-            error: "",
-          });
-        }
-
-        if (selected?.quote) {
-          const slippageRes = await fetch("/api/check-slippage", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ quote: selected.quote }),
-          });
-
-          const slippageData = await slippageRes.json();
-
-          if (slippageData.success) {
-            setSlippageState({
-              loading: false,
-              safe: Boolean(slippageData.safeToProceed),
-              percent:
-                typeof slippageData.slippagePercent === "number"
-                  ? slippageData.slippagePercent.toFixed(2)
-                  : "0",
-              message: slippageData.message || "",
-              error: "",
-            });
-          }
-        }
-
-        setExecutionState({
-          loading: false,
-          success: true,
+        setPlan(data);
+        setState({
+          phase: "ready",
+          message: "Ready to send.",
           error: "",
+          wallet: "",
+          txHash: "",
         });
       } catch {
-        setQuoteState({
-          loading: false,
-          success: false,
-          error: "Universal route selection failed.",
-          quote: null,
-        });
+        if (stopped) return;
 
-        setExecutionState({
-          loading: false,
-          success: false,
-          error: "",
+        setPlan(null);
+        setState({
+          phase: "failed",
+          message: "",
+          error: "Transportal could not prepare this transfer. Please try again.",
+          wallet: "",
+          txHash: "",
         });
       }
-    };
-
-    void prepareExecution();
-  }, [amount, fromToken, fromChain, toChain, receiver, route, normalizedToChain]);
-
-  useEffect(() => {
-    if (!swapState.txHash) return;
-
-    let stopped = false;
-
-    const verifyDestination = async () => {
-      if (!normalizedToChain.includes("solana")) return;
-
-      setDestinationState({
-        loading: true,
-        verified: false,
-        balance: "",
-        error: "",
-      });
-
-      try {
-        const verifyRes = await fetch("/api/verify-solana", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address: receiver }),
-        });
-
-        const verifyData = await verifyRes.json();
-
-        if (!verifyData.success) {
-          setDestinationState({
-            loading: false,
-            verified: false,
-            balance: "",
-            error: verifyData.error || "Destination verification failed.",
-          });
-
-          await updateTransaction({
-            txHash: swapState.txHash,
-            errorMessage: verifyData.error || "Destination verification failed.",
-          });
-
-          return;
-        }
-
-        setDestinationState({
-          loading: false,
-          verified: Boolean(verifyData.verified),
-          balance: String(verifyData.solBalance ?? "0"),
-          error: "",
-        });
-      } catch {
-        setDestinationState({
-          loading: false,
-          verified: false,
-          balance: "",
-          error: "Failed to verify destination wallet.",
-        });
-
-        await updateTransaction({
-          txHash: swapState.txHash,
-          errorMessage: "Failed to verify destination wallet.",
-        });
-      }
-    };
-
-    const pollStatus = async () => {
-      if (stopped) return;
-
-      try {
-        setTrackingState((prev) => ({ ...prev, loading: true }));
-
-        const res = await fetch("/api/mayan-status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ txHash: swapState.txHash }),
-        });
-
-        const data = await res.json();
-
-        if (!data.success) {
-          setTrackingState({
-            loading: false,
-            status: "",
-            completed: false,
-            refunded: false,
-            error: data.error || "Status polling failed.",
-          });
-
-          await updateTransaction({
-            txHash: swapState.txHash,
-            status: "status_error",
-            errorMessage: data.error || "Status polling failed.",
-          });
-
-          return;
-        }
-
-        const status =
-          typeof data.clientStatus === "string" ? data.clientStatus : "UNKNOWN";
-
-        const completed = status === "COMPLETED";
-        const refunded = status === "REFUNDED";
-
-        setTrackingState({
-          loading: false,
-          status,
-          completed,
-          refunded,
-          error: "",
-        });
-
-        await updateTransaction({
-          txHash: swapState.txHash,
-          status,
-          completed,
-          refunded,
-        });
-
-        if (completed) {
-          stopped = true;
-          await verifyDestination();
-        }
-
-        if (refunded) stopped = true;
-      } catch {
-        setTrackingState({
-          loading: false,
-          status: "",
-          completed: false,
-          refunded: false,
-          error: "Failed to poll status.",
-        });
-
-        await updateTransaction({
-          txHash: swapState.txHash,
-          status: "polling_error",
-          errorMessage: "Failed to poll status.",
-        });
-      }
-    };
-
-    if (selectedProvider === "mayan") {
-      void pollStatus();
-
-      const intervalId = window.setInterval(() => {
-        void pollStatus();
-      }, 6000);
-
-      return () => {
-        stopped = true;
-        window.clearInterval(intervalId);
-      };
     }
 
-    if (selectedProvider === "jupiter") {
-      void verifyDestination();
-    }
+    void prepareTransfer();
 
     return () => {
       stopped = true;
     };
-  }, [swapState.txHash, receiver, normalizedToChain, selectedProvider]);
+  }, [amount, fromToken, fromChain, toChain, receiver, normalizedToChain]);
 
-  const unsafeExecution = !gasState.safe || !slippageState.safe;
+  useEffect(() => {
+    if (!state.txHash || state.phase !== "confirming") return;
 
-  const requestWalletSignature = async () => {
-    if (unsafeExecution) return;
+    let stopped = false;
+
+    async function pollStatus() {
+      try {
+        const res = await fetch("/api/mayan-status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            txHash: state.txHash,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (stopped) return;
+
+        const status =
+          typeof data.clientStatus === "string"
+            ? data.clientStatus
+            : "";
+
+        if (status === "COMPLETED") {
+          setState((prev) => ({
+            ...prev,
+            phase: "completed",
+            message: "Transfer complete.",
+            error: "",
+          }));
+
+          await updateTransaction({
+            txHash: state.txHash,
+            status: "completed",
+            completed: true,
+          });
+
+          stopped = true;
+        }
+
+        if (status === "REFUNDED") {
+          setState((prev) => ({
+            ...prev,
+            phase: "failed",
+            message: "",
+            error: "This transfer was refunded.",
+          }));
+
+          await updateTransaction({
+            txHash: state.txHash,
+            status: "refunded",
+            refunded: true,
+          });
+
+          stopped = true;
+        }
+      } catch {
+        // Keep UI calm. Do not show technical polling errors to the user.
+      }
+    }
+
+    void pollStatus();
+
+    const interval = window.setInterval(() => {
+      void pollStatus();
+    }, 6000);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+    };
+  }, [state.txHash, state.phase]);
+
+  async function startTransfer() {
+    if (!plan?.quote) {
+      setState((prev) => ({
+        ...prev,
+        phase: "failed",
+        error: "Transfer is not ready yet.",
+      }));
+      return;
+    }
 
     try {
-      setSignState({
-        loading: true,
-        success: false,
+      setState((prev) => ({
+        ...prev,
+        phase: "signing",
+        message: "Waiting for wallet approval...",
         error: "",
-        wallet: "",
-        signature: "",
-      });
+      }));
 
       const { signer, address } = await getEvmSigner();
 
-      const message = [
-        "TRANSPORTAL transaction approval",
+      const approvalMessage = [
+        "TRANSPORTAL transfer approval",
         "",
         `Sending: ${amount} ${fromToken}`,
         `From: ${fromChain}`,
         `To: ${toChain}`,
         `Receiver: ${receiver}`,
         `Route: ${route}`,
-        `Selected Provider: ${selectedProvider}`,
       ].join("\n");
 
-      const signature = await signer.signMessage(message);
+      await signer.signMessage(approvalMessage);
 
-      setSignState({
-        loading: false,
-        success: true,
-        error: "",
+      setState((prev) => ({
+        ...prev,
+        phase: "sending",
+        message: "Sending funds...",
         wallet: address,
-        signature,
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Wallet signature failed.";
-
-      setSignState({
-        loading: false,
-        success: false,
-        error: message,
-        wallet: "",
-        signature: "",
-      });
-    }
-  };
-
-  const startExecution = async () => {
-    try {
-      setSwapState({
-        loading: true,
-        success: false,
         error: "",
-        wallet: signState.wallet,
-        status: "Initializing intelligent orchestration...",
-        txHash: "",
+      }));
+
+      const result = await executeMayanEvmSwap({
+        quote: plan.quote,
+        receiver,
       });
 
-const orchestrationResponse = await fetch("/api/transportal/prepare", {
-          method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-  providers: ["mayan"],
-  amount,
-  fromChain,
-  toChain,
-  fromToken,
-  toToken: normalizedToChain === "solana" ? "SOL" : fromToken,
-  receiver,
-  userPublicKey: signState.wallet,
-}),
-      });
-
-   const orchestrationData = await orchestrationResponse.json();
-
-if (!orchestrationData.success) {
-  throw new Error(
-    orchestrationData.error || "Transportal execution failed."
-  );
-}
-
-const provider = String(
-  orchestrationData.provider ||
-  orchestrationData.selectedProvider ||
-  ""
-);
-
-if (provider === "mayan") {
-  const mayanQuote =
-    orchestrationData.quote as Record<string, unknown> | null;
-
-  if (!mayanQuote) {
-    throw new Error(
-      "Transportal Core did not return a Mayan quote."
-    );
-  }
-
-  setSelectedProvider("mayan");
-
-  setSwapState({
-    loading: true,
-    success: false,
-    error: "",
-    wallet: signState.wallet,
-    status: "Opening MetaMask for Mayan transaction...",
-    txHash: "",
-  });
-
-  const result = await executeMayanEvmSwap({
-    quote: mayanQuote,
-    receiver,
-  });
-
-  setSwapState({
-    loading: false,
-    success: true,
-    error: "",
-    wallet: result.wallet,
-    status: result.status,
-    txHash: result.txHash,
-  });
-
-  await saveTransaction({
-    wallet: result.wallet,
-    receiver,
-    fromChain,
-    toChain,
-    fromToken,
-    amount,
-    route,
-    provider: "mayan",
-    txHash: result.txHash,
-    status: result.status,
-  });
-
-  return;
-}
-      const txHash = String(orchestrationData.txHash || "");
-      const status = String(
-        orchestrationData.status || "Execution initialized"
-      );
-
-      setSelectedProvider(provider);
-
-      setAttemptedProviders(
-        Array.isArray(orchestrationData.attemptedProviders)
-          ? orchestrationData.attemptedProviders.map((item: unknown) =>
-              String(item)
-            )
-          : []
-      );
-
-      setSwapState({
-        loading: false,
-        success: true,
+      setState({
+        phase: "confirming",
+        message: "Confirming transfer...",
         error: "",
-        wallet: signState.wallet,
-        status,
-        txHash,
-      });
-
-      setTrackingState({
-        loading: false,
-        status,
-        completed: false,
-        refunded: false,
-        error: "",
+        wallet: result.wallet,
+        txHash: result.txHash,
       });
 
       await saveTransaction({
-        wallet: signState.wallet,
+        wallet: result.wallet,
         receiver,
         fromChain,
         toChain,
         fromToken,
         amount,
         route,
-        provider,
-        txHash,
-        status,
-        attemptedProviders: orchestrationData.attemptedProviders || [],
+        provider: "transportal",
+        txHash: result.txHash,
+        status: result.status || "submitted",
       });
-
-      if (provider === "jupiter") {
-        try {
-          setSwapState((prev) => ({
-            ...prev,
-            loading: true,
-            status: "Broadcasting Jupiter transaction...",
-          }));
-
-          const response = await fetch("/api/execute-jupiter", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              inputMint: "So11111111111111111111111111111111111111112",
-              outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-              amount: "1000000",
-              slippageBps: 50,
-              userPublicKey: receiver,
-            }),
-          });
-
-          const data = await response.json();
-
-          if (data.success && data.swapTransaction) {
-            const broadcast = await broadcastSolanaTransaction(
-              data.swapTransaction
-            );
-
-            const confirmation = await confirmSolanaTransaction(
-              broadcast.txHash
-            );
-
-            setSwapState({
-              loading: false,
-              success: confirmation.confirmed,
-              error: confirmation.confirmed
-                ? ""
-                : "Transaction pending confirmation.",
-              wallet: receiver,
-              status: confirmation.confirmed
-                ? "Jupiter swap confirmed"
-                : "Jupiter swap submitted",
-              txHash: broadcast.txHash,
-            });
-
-            await updateTransaction({
-              txHash: broadcast.txHash,
-              status: confirmation.confirmed
-                ? "jupiter_confirmed"
-                : "jupiter_submitted",
-            });
-          }
-        } catch (error) {
-          setSwapState({
-            loading: false,
-            success: false,
-            error:
-              error instanceof Error ? error.message : "Jupiter swap failed.",
-            wallet: "",
-            status: "",
-            txHash: "",
-          });
-        }
-      }
-
-      if (provider === "uniswap") {
-        try {
-          setSwapState((prev) => ({
-            ...prev,
-            loading: true,
-            status: "Broadcasting Uniswap transaction...",
-          }));
-
-          const response = await fetch("/api/execute-uniswap", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              tokenIn: fromToken,
-              tokenOut: normalizedToChain === "ethereum" ? "ETH" : fromToken,
-              amount,
-              chainId: getEvmChainId(),
-            }),
-          });
-
-          const data = await response.json();
-
-          if (data.success && data.transaction) {
-            const broadcast = await broadcastEvmTransaction({
-              to: data.transaction.to,
-              data: data.transaction.data,
-              value: data.transaction.value,
-            });
-
-            const confirmation = await confirmEvmTransaction(broadcast.txHash);
-
-            setSwapState({
-              loading: false,
-              success: confirmation.confirmed,
-              error: confirmation.confirmed
-                ? ""
-                : "Transaction pending confirmation.",
-              wallet: signState.wallet,
-              status: confirmation.confirmed
-                ? "Uniswap swap confirmed"
-                : "Uniswap swap submitted",
-              txHash: broadcast.txHash,
-            });
-
-            await updateTransaction({
-              txHash: broadcast.txHash,
-              status: confirmation.confirmed
-                ? "uniswap_confirmed"
-                : "uniswap_submitted",
-            });
-          }
-        } catch (error) {
-          setSwapState({
-            loading: false,
-            success: false,
-            error:
-              error instanceof Error ? error.message : "Uniswap swap failed.",
-            wallet: "",
-            status: "",
-            txHash: "",
-          });
-        }
-      }
     } catch (error) {
-      setSwapState({
-        loading: false,
-        success: false,
-        error:
+      setState((prev) => ({
+        ...prev,
+        phase: "failed",
+        message: "",
+        error: cleanError(
           error instanceof Error
             ? error.message
-            : JSON.stringify(error, null, 2),
-        wallet: "",
-        status: "",
-        txHash: "",
-      });
+            : "Transfer failed. Please try again."
+        ),
+      }));
     }
-  };
+  }
 
-  const explorerUrl =
-    swapState.txHash &&
-    ![
-      "WORMHOLE_TRANSFER_READY",
-      "CCTP_TRANSFER_READY",
-      "MAYAN_QUOTE_READY",
-      "JUPITER_SWAP_TRANSACTION_READY",
-      "UNISWAP_TRANSACTION_READY",
-    ].includes(swapState.txHash)
-      ? selectedProvider === "jupiter"
-        ? `https://solscan.io/tx/${swapState.txHash}`
-        : `https://etherscan.io/tx/${swapState.txHash}`
-      : "";
+  const explorerUrl = getExplorerUrl(state.txHash, fromChain);
 
   return (
-    <div
-      style={{
-        marginTop: 16,
-        padding: 16,
-        borderRadius: 18,
-        background: "rgba(80,255,140,0.08)",
-        border: "1px solid rgba(80,255,140,0.22)",
-        color: "white",
-      }}
-    >
-      <h3>Universal execution engine</h3>
-
-      {quoteState.loading && (
-        <StatusBox>Selecting best live route...</StatusBox>
+    <div style={wrapStyle}>
+      {state.phase === "preparing" && (
+        <StatusBox title="Preparing transfer" text={state.message} />
       )}
 
-      {quoteState.success && selectedProvider && (
-        <SuccessBox>
-          Selected provider:
-          <br />
-          <strong>{selectedProvider.toUpperCase()}</strong>
-        </SuccessBox>
-      )}
+      {state.phase === "ready" && (
+        <div>
+          <StatusBox
+            title="Ready to send"
+            text="Review looks good. You can approve the transfer now."
+          />
 
-      {attemptedProviders.length > 0 && (
-        <StatusBox>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>
-            Orchestrator Attempted Providers
-          </div>
-
-          <div style={{ opacity: 0.85 }}>
-            {attemptedProviders.map((item) => item.toUpperCase()).join(" → ")}
-          </div>
-        </StatusBox>
-      )}
-
-      {availableRoutes.length > 0 && (
-        <StatusBox>
-          <div style={{ fontWeight: 800, marginBottom: 10 }}>
-            Available Live Routes
-          </div>
-
-          {availableRoutes.map((item, index) => (
-            <div
-              key={`${item.provider}-${index}`}
-              style={{
-                marginBottom: 10,
-                paddingBottom: 10,
-                borderBottom: "1px solid rgba(255,255,255,0.08)",
-              }}
-            >
-              <div style={{ fontWeight: 800, textTransform: "uppercase" }}>
-                {item.provider}
-              </div>
-
-              <div style={{ marginTop: 4, opacity: 0.8, fontSize: 13 }}>
-                {item.reason}
-              </div>
-            </div>
-          ))}
-        </StatusBox>
-      )}
-
-      {quoteState.error && <StatusBox>{quoteState.error}</StatusBox>}
-
-      {gasState.message &&
-        (gasState.safe ? (
-          <SuccessBox>
-            Gas: {gasState.gasGwei} GWEI
-            <br />
-            {gasState.message}
-          </SuccessBox>
-        ) : (
-          <ErrorBox>
-            Gas danger detected ⚠️
-            <br />
-            {gasState.message}
-          </ErrorBox>
-        ))}
-
-      {slippageState.message &&
-        (slippageState.safe ? (
-          <SuccessBox>
-            Slippage: {slippageState.percent}%
-            <br />
-            {slippageState.message}
-          </SuccessBox>
-        ) : (
-          <ErrorBox>
-            Dangerous slippage ⚠️
-            <br />
-            {slippageState.message}
-          </ErrorBox>
-        ))}
-
-      {unsafeExecution && (
-        <ErrorBox>TRANSPORTAL blocked this transaction for safety.</ErrorBox>
-      )}
-
-      {executionState.success && !unsafeExecution && (
-        <button
-          type="button"
-          onClick={requestWalletSignature}
-          style={buttonStyle}
-        >
-          Open Wallet Signature
-        </button>
-      )}
-
-      {signState.success && (
-        <SuccessBox>
-          Wallet signature received ✅
-          <button
-            type="button"
-            onClick={startExecution}
-            style={{ ...buttonStyle, marginTop: 14 }}
-          >
-            Start Orchestrated Execution
+          <button type="button" onClick={startTransfer} style={buttonStyle}>
+            Pay now
           </button>
-        </SuccessBox>
+        </div>
       )}
 
-      {swapState.loading && (
-        <StatusBox>{swapState.status || "Broadcasting transaction..."}</StatusBox>
+      {state.phase === "signing" && (
+        <StatusBox title="Wallet approval" text={state.message} />
       )}
 
-      {swapState.error && <ErrorBox>{swapState.error}</ErrorBox>}
+      {state.phase === "sending" && (
+        <StatusBox title="Sending funds" text={state.message} />
+      )}
 
-      {swapState.success && (
+      {state.phase === "confirming" && (
+        <StatusBox title="Confirming transfer" text={state.message} />
+      )}
+
+      {state.phase === "completed" && (
         <SuccessBox>
-          {swapState.status || "Transaction submitted ✅"}
+          <div style={successIconStyle}>✓</div>
+          <div style={successTitleStyle}>Transfer complete</div>
 
-          <div style={{ marginTop: 10, overflowWrap: "anywhere" }}>
-            {swapState.txHash}
+          <div style={receiptStyle}>
+            <Slip label="Amount" value={`${amount} ${fromToken}`} />
+            <Slip label="From" value={fromChain} />
+            <Slip label="To" value={toChain} />
+            <Slip label="Receiver" value={receiver} />
+
+            {state.txHash && <Slip label="Transaction" value={state.txHash} />}
           </div>
 
           {explorerUrl && (
@@ -970,117 +339,254 @@ if (provider === "mayan") {
               href={explorerUrl}
               target="_blank"
               rel="noreferrer"
-              style={{
-                display: "block",
-                marginTop: 12,
-                textAlign: "center",
-                textDecoration: "none",
-                padding: 12,
-                borderRadius: 14,
-                background: "white",
-                color: "black",
-                fontWeight: 900,
-              }}
+              style={linkButtonStyle}
             >
-              View Transaction
+              View receipt
             </a>
           )}
         </SuccessBox>
       )}
 
-      {trackingState.loading && <StatusBox>Polling route status...</StatusBox>}
-
-      {trackingState.status && (
-        <StatusBox>
-          Status:
-          <br />
-          <strong>{trackingState.status}</strong>
-        </StatusBox>
-      )}
-
-      {trackingState.completed && <SuccessBox>Transfer completed ✅</SuccessBox>}
-
-      {trackingState.refunded && <ErrorBox>Transfer refunded.</ErrorBox>}
-
-      {trackingState.error && <ErrorBox>{trackingState.error}</ErrorBox>}
-
-      {destinationState.loading && (
-        <StatusBox>Verifying destination wallet on Solana...</StatusBox>
-      )}
-
-      {destinationState.verified && (
-        <SuccessBox>
-          Funds verified on Solana ✅
-          <div style={{ marginTop: 8 }}>
-            Balance: {destinationState.balance} SOL
+      {state.phase === "failed" && (
+        <ErrorBox>
+          <div style={{ fontWeight: 900, marginBottom: 8 }}>
+            Transfer could not be completed
           </div>
-        </SuccessBox>
+          <div>{state.error || "Something went wrong. Please try again."}</div>
+        </ErrorBox>
       )}
-
-      {destinationState.error && <ErrorBox>{destinationState.error}</ErrorBox>}
     </div>
   );
 }
 
-function StatusBox({ children }: { children: React.ReactNode }) {
+async function saveTransaction(payload: Record<string, unknown>) {
+  try {
+    await fetch("/api/transactions/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch {}
+}
+
+async function updateTransaction(payload: Record<string, unknown>) {
+  try {
+    await fetch("/api/transactions/update", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch {}
+}
+
+function cleanError(message: string) {
+  const lower = message.toLowerCase();
+
+  if (lower.includes("insufficient funds")) {
+    return "Your wallet does not have enough funds for this transfer.";
+  }
+
+  if (lower.includes("permit is expired")) {
+    return "This quote expired before it could be used. Please try again.";
+  }
+
+  if (lower.includes("invalid byteslike") || lower.includes("invalid address")) {
+    return "The receiver address does not match the destination network.";
+  }
+
+  if (lower.includes("user rejected") || lower.includes("user denied")) {
+    return "You cancelled the wallet approval.";
+  }
+
+  if (lower.includes("metamask wallet not found")) {
+    return "No wallet was found. Please connect a wallet first.";
+  }
+
+  if (message.length > 180) {
+    return "Transfer failed. Please check your wallet, receiver address, and balance.";
+  }
+
+  return message;
+}
+
+function getExplorerUrl(txHash: string, fromChain: string) {
+  if (!txHash) return "";
+
+  const chain = fromChain.toLowerCase();
+
+  if (chain.includes("solana")) {
+    return `https://solscan.io/tx/${txHash}`;
+  }
+
+  if (chain.includes("base")) {
+    return `https://basescan.org/tx/${txHash}`;
+  }
+
+  if (chain.includes("arbitrum")) {
+    return `https://arbiscan.io/tx/${txHash}`;
+  }
+
+  if (chain.includes("polygon")) {
+    return `https://polygonscan.com/tx/${txHash}`;
+  }
+
+  return `https://etherscan.io/tx/${txHash}`;
+}
+
+function StatusBox({ title, text }: { title: string; text: string }) {
   return (
-    <div
-      style={{
-        marginTop: 12,
-        padding: 12,
-        borderRadius: 14,
-        background: "rgba(255,255,255,0.07)",
-      }}
-    >
-      {children}
+    <div style={statusBoxStyle}>
+      <div style={miniLabelStyle}>{title}</div>
+      <div style={statusTextStyle}>{text}</div>
+      <div style={progressBarOuterStyle}>
+        <div style={progressBarInnerStyle} />
+      </div>
     </div>
   );
 }
 
 function ErrorBox({ children }: { children: React.ReactNode }) {
+  return <div style={errorBoxStyle}>{children}</div>;
+}
+
+function SuccessBox({ children }: { children: React.ReactNode }) {
+  return <div style={successBoxStyle}>{children}</div>;
+}
+
+function Slip({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      style={{
-        marginTop: 12,
-        padding: 12,
-        borderRadius: 14,
-        background: "rgba(255,80,80,0.12)",
-        color: "#ffb4b4",
-        whiteSpace: "pre-wrap",
-        overflowWrap: "anywhere",
-        fontFamily:
-          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-        fontSize: 12,
-      }}
-    >
-      {children}
+    <div style={slipStyle}>
+      <span style={{ color: "rgba(255,255,255,0.55)" }}>{label}</span>
+      <span style={slipValueStyle}>{value}</span>
     </div>
   );
 }
 
-function SuccessBox({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        marginTop: 12,
-        padding: 12,
-        borderRadius: 14,
-        background: "rgba(80,255,140,0.10)",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
+const wrapStyle = {
+  marginTop: 16,
+};
+
+const statusBoxStyle = {
+  padding: 16,
+  borderRadius: 20,
+  background: "rgba(255,255,255,0.07)",
+  border: "1px solid rgba(255,255,255,0.12)",
+};
+
+const miniLabelStyle = {
+  fontSize: 12,
+  color: "rgba(255,255,255,0.55)",
+  fontWeight: 900,
+  letterSpacing: 1,
+  textTransform: "uppercase" as const,
+  marginBottom: 8,
+};
+
+const statusTextStyle = {
+  fontSize: 16,
+  fontWeight: 850,
+  color: "white",
+};
+
+const progressBarOuterStyle = {
+  marginTop: 14,
+  height: 6,
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.10)",
+  overflow: "hidden",
+};
+
+const progressBarInnerStyle = {
+  width: "58%",
+  height: "100%",
+  borderRadius: 999,
+  background: "white",
+};
 
 const buttonStyle = {
   marginTop: 14,
   width: "100%",
-  padding: 15,
-  borderRadius: 16,
+  padding: 16,
+  borderRadius: 18,
   border: "none",
   background: "white",
   color: "black",
-  fontWeight: 900,
+  fontWeight: 950,
+  fontSize: 15,
   cursor: "pointer",
 } as const;
+
+const errorBoxStyle = {
+  padding: 16,
+  borderRadius: 20,
+  background: "rgba(255,80,80,0.12)",
+  border: "1px solid rgba(255,80,80,0.22)",
+  color: "#ffb4b4",
+  fontSize: 14,
+  lineHeight: 1.5,
+};
+
+const successBoxStyle = {
+  padding: 18,
+  borderRadius: 22,
+  background: "rgba(80,255,140,0.10)",
+  border: "1px solid rgba(80,255,140,0.22)",
+};
+
+const successIconStyle = {
+  width: 46,
+  height: 46,
+  borderRadius: 999,
+  background: "white",
+  color: "black",
+  display: "grid",
+  placeItems: "center",
+  fontWeight: 950,
+  fontSize: 24,
+  marginBottom: 12,
+};
+
+const successTitleStyle = {
+  fontSize: 22,
+  fontWeight: 950,
+  marginBottom: 14,
+};
+
+const receiptStyle = {
+  padding: 14,
+  borderRadius: 18,
+  background: "rgba(0,0,0,0.25)",
+  border: "1px solid rgba(255,255,255,0.10)",
+};
+
+const slipStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 14,
+  padding: "10px 0",
+  borderBottom: "1px solid rgba(255,255,255,0.07)",
+  fontSize: 13,
+};
+
+const slipValueStyle = {
+  maxWidth: "62%",
+  textAlign: "right" as const,
+  overflowWrap: "anywhere" as const,
+  fontWeight: 800,
+};
+
+const linkButtonStyle = {
+  display: "block",
+  marginTop: 14,
+  textAlign: "center" as const,
+  textDecoration: "none",
+  padding: 14,
+  borderRadius: 16,
+  background: "white",
+  color: "black",
+  fontWeight: 950,
+};
