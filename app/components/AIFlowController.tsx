@@ -290,9 +290,9 @@ const outerStyle = {
 };
 
 const flowStyle = {
-  width: "min(800px, 100%)",
-  height: "min(800px, calc(100vh - 150px))",
-  minHeight: 560,
+  width: "min(500px, 100%)",
+  height: "min(500px, calc(100vh - 150px))",
+  minHeight: 500,
   color: "white",
   display: "grid",
   gridTemplateRows: "auto 1fr",
@@ -334,10 +334,12 @@ const lineStyle = {
   background: "rgba(255,255,255,0.22)",
 };
 
+
 const cardStyle = {
   width: "100%",
   height: "100%",
   minHeight: 500,
+  maxHeight: 500,
   padding: 28,
   borderRadius: 30,
   background: "rgba(255,255,255,0.075)",
@@ -355,7 +357,7 @@ const contentStyle = {
 
 const intentInputStyle = {
   width: "100%",
-  minHeight: 220,
+  minHeight: 120,
   padding: 24,
   borderRadius: 22,
   background: "#050505",
