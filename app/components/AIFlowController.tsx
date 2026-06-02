@@ -38,6 +38,7 @@ export default function AIFlowController() {
     };
 
     readWallet();
+
     const interval = window.setInterval(readWallet, 700);
 
     return () => window.clearInterval(interval);
@@ -58,6 +59,7 @@ export default function AIFlowController() {
 
   const intentDone = Boolean(plan);
   const walletDone = Boolean(wallet) && Boolean(receiver.trim());
+  const confirmDone = payStarted;
   const canContinueWallet = walletDone;
 
   const prepareIntent = async () => {
@@ -75,7 +77,9 @@ export default function AIFlowController() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+        }),
       });
 
       const data = await res.json();
@@ -102,12 +106,12 @@ export default function AIFlowController() {
           <Line />
           <StepItem label="Wallet" active={step === "wallet"} done={walletDone} />
           <Line />
-          <StepItem label="Confirm" active={step === "confirm"} done={payStarted} />
+          <StepItem label="Confirm" active={step === "confirm"} done={confirmDone} />
         </div>
 
         <div style={cardStyle}>
           {step === "intent" && (
-            <>
+            <div style={contentStyle}>
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
@@ -117,29 +121,32 @@ export default function AIFlowController() {
 
               {error && <div style={errorStyle}>{error}</div>}
 
-              <button
-                type="button"
-                onClick={prepareIntent}
-                disabled={loading || !message.trim()}
-                style={{
-                  ...buttonStyle,
-                  opacity: loading || !message.trim() ? 0.55 : 1,
-                }}
-              >
-                {loading ? "Checking..." : "Continue"}
-              </button>
-            </>
+              <div style={bottomAreaStyle}>
+                <button
+                  type="button"
+                  onClick={prepareIntent}
+                  disabled={loading || !message.trim()}
+                  style={{
+                    ...mainButtonStyle,
+                    opacity: loading || !message.trim() ? 0.55 : 1,
+                  }}
+                >
+                  {loading ? "Checking..." : "Continue"}
+                </button>
+              </div>
+            </div>
           )}
 
           {step === "wallet" && plan && (
-            <>
+            <div style={contentStyle}>
               <div style={summaryStyle}>
-                <span>
+                <div style={summaryAmountStyle}>
                   {amount} {fromToken}
-                </span>
-                <span>
+                </div>
+
+                <div style={summaryRouteStyle}>
                   {fromChain} → {toChain}
-                </span>
+                </div>
               </div>
 
               <div style={walletBoxStyle}>
@@ -153,30 +160,32 @@ export default function AIFlowController() {
                 style={inputStyle}
               />
 
-              <button
-                type="button"
-                onClick={() => setStep("confirm")}
-                disabled={!canContinueWallet}
-                style={{
-                  ...buttonStyle,
-                  opacity: canContinueWallet ? 1 : 0.55,
-                }}
-              >
-                Continue
-              </button>
+              <div style={bottomAreaStyle}>
+                <button
+                  type="button"
+                  onClick={() => setStep("confirm")}
+                  disabled={!canContinueWallet}
+                  style={{
+                    ...mainButtonStyle,
+                    opacity: canContinueWallet ? 1 : 0.55,
+                  }}
+                >
+                  Continue
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setStep("intent")}
-                style={backButtonStyle}
-              >
-                Back
-              </button>
-            </>
+                <button
+                  type="button"
+                  onClick={() => setStep("intent")}
+                  style={secondaryButtonStyle}
+                >
+                  Back
+                </button>
+              </div>
+            </div>
           )}
 
           {step === "confirm" && plan && (
-            <>
+            <div style={contentStyle}>
               <div style={reviewBoxStyle}>
                 <Row label="Sending" value={`${amount} ${fromToken}`} />
                 <Row label="From" value={fromChain} />
@@ -186,11 +195,11 @@ export default function AIFlowController() {
               </div>
 
               {!payStarted && (
-                <>
+                <div style={bottomAreaStyle}>
                   <button
                     type="button"
                     onClick={() => setPayStarted(true)}
-                    style={buttonStyle}
+                    style={mainButtonStyle}
                   >
                     Pay now
                   </button>
@@ -198,24 +207,26 @@ export default function AIFlowController() {
                   <button
                     type="button"
                     onClick={() => setStep("wallet")}
-                    style={backButtonStyle}
+                    style={secondaryButtonStyle}
                   >
                     Back
                   </button>
-                </>
+                </div>
               )}
 
               {payStarted && (
-                <ExecutionStatus
-                  amount={amount}
-                  fromToken={fromToken}
-                  fromChain={fromChain}
-                  toChain={toChain}
-                  receiver={receiver}
-                  route="Transportal"
-                />
+                <div style={{ marginTop: 18 }}>
+                  <ExecutionStatus
+                    amount={amount}
+                    fromToken={fromToken}
+                    fromChain={fromChain}
+                    toChain={toChain}
+                    receiver={receiver}
+                    route="Transportal"
+                  />
+                </div>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -237,14 +248,20 @@ function StepItem({
       <div
         style={{
           ...dotStyle,
-          background: done ? "#22c55e" : active ? "white" : "#1f1f1f",
+          background: done ? "#22c55e" : active ? "white" : "#222",
           color: done ? "white" : active ? "black" : "#777",
         }}
       >
         {done ? "✓" : ""}
       </div>
 
-      <span style={{ color: active || done ? "white" : "#777" }}>{label}</span>
+      <span
+        style={{
+          color: active || done ? "white" : "#777",
+        }}
+      >
+        {label}
+      </span>
     </div>
   );
 }
@@ -264,150 +281,177 @@ function Row({ label, value }: { label: string; value: string }) {
 
 const outerStyle = {
   width: "100%",
-  minHeight: "calc(100vh - 190px)",
+  minHeight: "calc(100vh - 120px)",
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
-  padding: "20px 14px",
+  padding: "24px",
   boxSizing: "border-box" as const,
 };
 
 const flowStyle = {
-  width: "100%",
-  maxWidth: 520,
-  margin: "0 auto",
+  width: "min(800px, 100%)",
+  height: "min(800px, calc(100vh - 150px))",
+  minHeight: 560,
   color: "white",
+  display: "grid",
+  gridTemplateRows: "auto 1fr",
+  gap: 26,
 };
 
 const stepBarStyle = {
+  height: 48,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: 9,
-  marginBottom: 16,
-  flexWrap: "wrap" as const,
+  gap: 18,
+  flexWrap: "nowrap" as const,
 };
 
 const stepItemStyle = {
   display: "flex",
   alignItems: "center",
-  gap: 7,
-  fontSize: 13,
-  fontWeight: 850,
+  gap: 9,
+  fontSize: 15,
+  fontWeight: 900,
+  whiteSpace: "nowrap" as const,
 };
 
 const dotStyle = {
-  width: 22,
-  height: 22,
+  width: 30,
+  height: 30,
   borderRadius: 999,
   display: "grid",
   placeItems: "center",
-  fontSize: 13,
-  fontWeight: 900,
+  fontSize: 15,
+  fontWeight: 950,
   flexShrink: 0,
 };
 
 const lineStyle = {
-  width: 32,
+  width: 78,
   height: 1,
-  background: "rgba(255,255,255,0.16)",
+  background: "rgba(255,255,255,0.22)",
 };
 
 const cardStyle = {
   width: "100%",
-  padding: 18,
-  borderRadius: 24,
+  height: "100%",
+  minHeight: 500,
+  padding: 28,
+  borderRadius: 30,
   background: "rgba(255,255,255,0.075)",
-  border: "1px solid rgba(255,255,255,0.12)",
+  border: "1px solid rgba(255,255,255,0.14)",
   boxSizing: "border-box" as const,
-  boxShadow: "0 24px 70px rgba(0,0,0,0.32)",
+  boxShadow: "0 28px 90px rgba(0,0,0,0.38)",
+  overflow: "hidden",
+};
+
+const contentStyle = {
+  height: "100%",
+  display: "flex",
+  flexDirection: "column" as const,
 };
 
 const intentInputStyle = {
   width: "100%",
-  minHeight: 95,
-  padding: 15,
-  borderRadius: 18,
+  minHeight: 220,
+  padding: 24,
+  borderRadius: 22,
   background: "#050505",
   color: "white",
-  border: "1px solid rgba(255,255,255,0.12)",
+  border: "1px solid rgba(255,255,255,0.14)",
   outline: "none",
-  resize: "vertical" as const,
+  resize: "none" as const,
   boxSizing: "border-box" as const,
-  fontSize: 16,
+  fontSize: 24,
+  lineHeight: 1.35,
 };
 
 const inputStyle = {
   width: "100%",
-  marginTop: 14,
-  padding: 15,
-  borderRadius: 16,
+  marginTop: 22,
+  padding: 22,
+  borderRadius: 20,
   background: "#050505",
   color: "white",
-  border: "1px solid rgba(255,255,255,0.12)",
+  border: "1px solid rgba(255,255,255,0.14)",
   outline: "none",
   boxSizing: "border-box" as const,
-  fontSize: 14,
+  fontSize: 19,
 };
 
-const buttonStyle = {
+const mainButtonStyle = {
   width: "100%",
-  marginTop: 14,
-  padding: 15,
+  padding: 19,
   borderRadius: 999,
   border: "none",
   background: "white",
   color: "black",
-  fontSize: 15,
-  fontWeight: 900,
+  fontSize: 18,
+  fontWeight: 950,
   cursor: "pointer",
 };
 
-const backButtonStyle = {
+const secondaryButtonStyle = {
   width: "100%",
-  marginTop: 10,
-  padding: 13,
+  marginTop: 14,
+  padding: 17,
   borderRadius: 999,
   border: "1px solid rgba(255,255,255,0.14)",
   background: "rgba(255,255,255,0.06)",
   color: "white",
-  fontSize: 14,
-  fontWeight: 800,
+  fontSize: 16,
+  fontWeight: 850,
   cursor: "pointer",
+};
+
+const bottomAreaStyle = {
+  marginTop: "auto",
+  paddingTop: 24,
 };
 
 const summaryStyle = {
   display: "flex",
   justifyContent: "space-between",
-  gap: 10,
-  padding: 13,
-  marginBottom: 14,
-  borderRadius: 16,
+  alignItems: "center",
+  gap: 18,
+  padding: 22,
+  borderRadius: 22,
   background: "#050505",
-  border: "1px solid rgba(255,255,255,0.1)",
-  fontSize: 13,
-  fontWeight: 850,
+  border: "1px solid rgba(255,255,255,0.12)",
   overflowWrap: "anywhere" as const,
 };
 
+const summaryAmountStyle = {
+  fontSize: 24,
+  fontWeight: 950,
+};
+
+const summaryRouteStyle = {
+  fontSize: 18,
+  fontWeight: 900,
+  textAlign: "right" as const,
+};
+
 const walletBoxStyle = {
-  borderRadius: 16,
+  marginTop: 22,
 };
 
 const reviewBoxStyle = {
-  padding: 14,
-  borderRadius: 18,
+  padding: 22,
+  borderRadius: 22,
   background: "#050505",
-  border: "1px solid rgba(255,255,255,0.1)",
+  border: "1px solid rgba(255,255,255,0.12)",
 };
 
 const rowStyle = {
   display: "flex",
   justifyContent: "space-between",
-  gap: 14,
-  padding: "11px 0",
-  borderBottom: "1px solid rgba(255,255,255,0.07)",
-  fontSize: 14,
+  gap: 20,
+  padding: "16px 0",
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
+  fontSize: 18,
 };
 
 const rowLabelStyle = {
@@ -415,17 +459,17 @@ const rowLabelStyle = {
 };
 
 const rowValueStyle = {
-  maxWidth: "62%",
+  maxWidth: "60%",
   textAlign: "right" as const,
   overflowWrap: "anywhere" as const,
-  fontWeight: 850,
+  fontWeight: 900,
 };
 
 const errorStyle = {
-  marginTop: 12,
-  padding: 12,
-  borderRadius: 14,
+  marginTop: 16,
+  padding: 14,
+  borderRadius: 16,
   background: "rgba(255,80,80,0.12)",
   color: "#ffb4b4",
-  fontSize: 13,
+  fontSize: 14,
 };
