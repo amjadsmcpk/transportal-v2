@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import SmartWalletConnect from "./SmartWalletConnect";
 import ExecutionStatus from "./ExecutionStatus";
@@ -23,12 +23,27 @@ export default function AIFlowController() {
   const [step, setStep] = useState<Step>("intent");
   const [message, setMessage] = useState("");
   const [receiver, setReceiver] = useState("");
+  const [wallet, setWallet] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(false);
   const [payStarted, setPayStarted] = useState(false);
   const [error, setError] = useState("");
 
   const intent = useMemo(() => plan?.intent || {}, [plan]);
+
+  useEffect(() => {
+    const readWallet = () => {
+      const saved =
+        window.localStorage.getItem("transportal_wallet") || "";
+      setWallet(saved);
+    };
+
+    readWallet();
+
+    const interval = window.setInterval(readWallet, 800);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   const text = (value: unknown, fallback = "-") => {
     if (typeof value === "string" || typeof value === "number") {
@@ -38,8 +53,13 @@ export default function AIFlowController() {
     return fallback;
   };
 
-  const sendLabel = `${text(intent.amount)} ${text(intent.fromToken)}`;
-  const routeLabel = `${text(intent.fromChain)} → ${text(intent.toChain)}`;
+  const amount = text(intent.amount, "");
+  const fromToken = text(intent.fromToken, "");
+  const fromChain = text(intent.fromChain, "");
+  const toChain = text(intent.toChain, "");
+
+  const intentDone = Boolean(plan);
+  const walletDone = Boolean(wallet) && Boolean(receiver.trim());
 
   const prepareIntent = async () => {
     if (!message.trim()) return;
@@ -47,6 +67,7 @@ export default function AIFlowController() {
     setLoading(true);
     setError("");
     setPlan(null);
+    setReceiver("");
     setPayStarted(false);
 
     try {
@@ -55,9 +76,7 @@ export default function AIFlowController() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          message,
-        }),
+        body: JSON.stringify({ message }),
       });
 
       const data = await res.json();
@@ -70,40 +89,30 @@ export default function AIFlowController() {
       setPlan(data.plan);
       setStep("wallet");
     } catch {
-      setError("Transportal could not prepare this transfer.");
+      setError("Could not prepare this transfer.");
     } finally {
       setLoading(false);
     }
   };
 
-  const canContinue =
-    Boolean(receiver.trim()) &&
-    Boolean(text(intent.amount, "")) &&
-    Boolean(text(intent.fromToken, "")) &&
-    Boolean(text(intent.fromChain, "")) &&
-    Boolean(text(intent.toChain, ""));
+  const canContinueWallet = Boolean(wallet) && Boolean(receiver.trim());
 
   return (
     <div style={shellStyle}>
-      <div style={topBarStyle}>
-        <div style={logoStyle}>TRANSPORTAL</div>
-        <div style={stepsStyle}>
-          <StepDot active={step === "intent"} label="Intent" />
-          <StepDot active={step === "wallet"} label="Wallet" />
-          <StepDot active={step === "confirm"} label="Confirm" />
-        </div>
+      <div style={stepBarStyle}>
+        <StepItem label="Intent" active={step === "intent"} done={intentDone} />
+        <Line />
+        <StepItem label="Wallet" active={step === "wallet"} done={walletDone} />
+        <Line />
+        <StepItem label="Confirm" active={step === "confirm"} done={payStarted} />
       </div>
 
-      <div style={phoneCardStyle}>
+      <div style={cardStyle}>
         {step === "intent" && (
           <>
-            <div style={miniTextStyle}>Send crypto</div>
-
-            <h1 style={titleStyle}>What are you sending today?</h1>
-
             <textarea
               value={message}
-              onChange={(event) => setMessage(event.target.value)}
+              onChange={(e) => setMessage(e.target.value)}
               placeholder="send 0.003 eth to solana"
               style={intentInputStyle}
             />
@@ -115,104 +124,93 @@ export default function AIFlowController() {
               onClick={prepareIntent}
               disabled={loading || !message.trim()}
               style={{
-                ...payButtonStyle,
+                ...buttonStyle,
                 opacity: loading || !message.trim() ? 0.55 : 1,
               }}
             >
-              {loading ? "Preparing..." : "Continue"}
+              {loading ? "Checking..." : "Continue"}
             </button>
           </>
         )}
 
         {step === "wallet" && plan && (
           <>
-            <div style={backRowStyle}>
-              <button
-                type="button"
-                onClick={() => setStep("intent")}
-                style={backButtonStyle}
-              >
-                ←
-              </button>
-              <div style={miniTextStyle}>Wallet</div>
+            <div style={smallSummaryStyle}>
+              <strong>
+                {amount} {fromToken}
+              </strong>
+              <span>
+                {fromChain} → {toChain}
+              </span>
             </div>
 
-            <h1 style={titleStyle}>Connect wallet</h1>
-
-            <div style={summaryPillStyle}>
-              <span>{sendLabel}</span>
-              <span>{routeLabel}</span>
-            </div>
-
-            <div style={walletPanelStyle}>
-              <SmartWalletConnect />
-            </div>
-
-            <label style={labelStyle}>Receiver</label>
+            <SmartWalletConnect />
 
             <input
               value={receiver}
-              onChange={(event) => setReceiver(event.target.value)}
-              placeholder="Paste wallet address"
+              onChange={(e) => setReceiver(e.target.value)}
+              placeholder="Receiver address"
               style={inputStyle}
             />
 
             <button
               type="button"
               onClick={() => setStep("confirm")}
-              disabled={!canContinue}
+              disabled={!canContinueWallet}
               style={{
-                ...payButtonStyle,
-                opacity: canContinue ? 1 : 0.55,
+                ...buttonStyle,
+                opacity: canContinueWallet ? 1 : 0.55,
               }}
             >
               Continue
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStep("intent")}
+              style={backButtonStyle}
+            >
+              Back
             </button>
           </>
         )}
 
         {step === "confirm" && plan && (
           <>
-            <div style={backRowStyle}>
-              <button
-                type="button"
-                onClick={() => setStep("wallet")}
-                style={backButtonStyle}
-              >
-                ←
-              </button>
-              <div style={miniTextStyle}>Confirm</div>
-            </div>
-
-            <div style={amountHeroStyle}>
-              <div style={amountTextStyle}>{sendLabel}</div>
-              <div style={routeTextStyle}>{routeLabel}</div>
-            </div>
-
-            <div style={receiptStyle}>
-              <Row label="Sending" value={sendLabel} />
-              <Row label="From" value={text(intent.fromChain)} />
-              <Row label="To" value={text(intent.toChain)} />
+            <div style={reviewBoxStyle}>
+              <Row label="Sending" value={`${amount} ${fromToken}`} />
+              <Row label="From" value={fromChain} />
+              <Row label="To" value={toChain} />
               <Row label="Receiver" value={receiver} />
-              <Row label="Estimated cost" value="Calculated on payment" />
+              <Row label="Cost" value="Calculated on payment" />
             </div>
 
             {!payStarted && (
-              <button
-                type="button"
-                onClick={() => setPayStarted(true)}
-                style={payButtonStyle}
-              >
-                Pay now
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPayStarted(true)}
+                  style={buttonStyle}
+                >
+                  Pay now
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStep("wallet")}
+                  style={backButtonStyle}
+                >
+                  Back
+                </button>
+              </>
             )}
 
             {payStarted && (
               <ExecutionStatus
-                amount={text(intent.amount)}
-                fromToken={text(intent.fromToken)}
-                fromChain={text(intent.fromChain)}
-                toChain={text(intent.toChain)}
+                amount={amount}
+                fromToken={fromToken}
+                fromChain={fromChain}
+                toChain={toChain}
                 receiver={receiver}
                 route="Transportal"
               />
@@ -224,18 +222,40 @@ export default function AIFlowController() {
   );
 }
 
-function StepDot({ active, label }: { active: boolean; label: string }) {
+function StepItem({
+  label,
+  active,
+  done,
+}: {
+  label: string;
+  active: boolean;
+  done: boolean;
+}) {
   return (
-    <div
-      style={{
-        ...stepDotStyle,
-        background: active ? "white" : "rgba(255,255,255,0.08)",
-        color: active ? "black" : "rgba(255,255,255,0.55)",
-      }}
-    >
-      {label}
+    <div style={stepItemStyle}>
+      <div
+        style={{
+          ...dotStyle,
+          background: done ? "#22c55e" : active ? "white" : "#222",
+          color: done ? "white" : active ? "black" : "#777",
+        }}
+      >
+        {done ? "✓" : ""}
+      </div>
+
+      <span
+        style={{
+          color: active || done ? "white" : "#777",
+        }}
+      >
+        {label}
+      </span>
     </div>
   );
+}
+
+function Line() {
+  return <div style={lineStyle} />;
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -249,200 +269,132 @@ function Row({ label, value }: { label: string; value: string }) {
 
 const shellStyle = {
   width: "100%",
+  maxWidth: 520,
+  margin: "0 auto",
   color: "white",
-};
-
-const topBarStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 14,
-  marginBottom: 16,
-};
-
-const logoStyle = {
-  fontSize: 13,
-  fontWeight: 950,
-  letterSpacing: 1.4,
-};
-
-const stepsStyle = {
-  display: "flex",
-  gap: 7,
-};
-
-const stepDotStyle = {
-  padding: "7px 10px",
-  borderRadius: 999,
-  fontSize: 11,
-  fontWeight: 900,
-  transition: "all 180ms ease",
-};
-
-const phoneCardStyle = {
-  width: "100%",
-  padding: 22,
-  borderRadius: 34,
-  background:
-    "linear-gradient(180deg, rgba(255,255,255,0.105), rgba(255,255,255,0.055))",
-  border: "1px solid rgba(255,255,255,0.14)",
-  boxShadow: "0 40px 120px rgba(0,0,0,0.45)",
   boxSizing: "border-box" as const,
 };
 
-const miniTextStyle = {
-  fontSize: 12,
-  color: "rgba(255,255,255,0.55)",
-  fontWeight: 900,
-  textTransform: "uppercase" as const,
-  letterSpacing: 1.2,
+const stepBarStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 10,
+  marginBottom: 18,
+  flexWrap: "wrap" as const,
 };
 
-const titleStyle = {
-  margin: "12px 0 0",
-  fontSize: 32,
-  lineHeight: 1.05,
-  fontWeight: 950,
-  letterSpacing: -1,
+const stepItemStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 7,
+  fontSize: 13,
+  fontWeight: 850,
+};
+
+const dotStyle = {
+  width: 22,
+  height: 22,
+  borderRadius: 999,
+  display: "grid",
+  placeItems: "center",
+  fontSize: 13,
+  fontWeight: 900,
+};
+
+const lineStyle = {
+  width: 34,
+  height: 1,
+  background: "rgba(255,255,255,0.18)",
+};
+
+const cardStyle = {
+  width: "100%",
+  padding: 18,
+  borderRadius: 24,
+  background: "rgba(255,255,255,0.07)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  boxSizing: "border-box" as const,
 };
 
 const intentInputStyle = {
   width: "100%",
-  minHeight: 145,
-  marginTop: 24,
-  padding: 18,
-  borderRadius: 26,
+  minHeight: 130,
+  padding: 16,
+  borderRadius: 20,
   background: "#050505",
   color: "white",
   border: "1px solid rgba(255,255,255,0.12)",
   outline: "none",
   resize: "vertical" as const,
   boxSizing: "border-box" as const,
-  fontSize: 18,
-  lineHeight: 1.45,
-};
-
-const payButtonStyle = {
-  width: "100%",
-  marginTop: 18,
-  padding: 17,
-  borderRadius: 999,
-  border: "none",
-  background: "white",
-  color: "black",
   fontSize: 16,
-  fontWeight: 950,
-  cursor: "pointer",
-};
-
-const errorStyle = {
-  marginTop: 14,
-  padding: 13,
-  borderRadius: 18,
-  background: "rgba(255,80,80,0.12)",
-  color: "#ffb4b4",
-  fontSize: 13,
-  lineHeight: 1.45,
-};
-
-const backRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-};
-
-const backButtonStyle = {
-  width: 38,
-  height: 38,
-  borderRadius: 999,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.08)",
-  color: "white",
-  fontSize: 20,
-  cursor: "pointer",
-};
-
-const summaryPillStyle = {
-  marginTop: 18,
-  padding: 14,
-  borderRadius: 22,
-  background: "#050505",
-  border: "1px solid rgba(255,255,255,0.11)",
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  fontSize: 13,
-  fontWeight: 850,
-  color: "rgba(255,255,255,0.82)",
-};
-
-const walletPanelStyle = {
-  marginTop: 18,
-  padding: 14,
-  borderRadius: 24,
-  background: "#050505",
-  border: "1px solid rgba(255,255,255,0.11)",
-};
-
-const labelStyle = {
-  display: "block",
-  marginTop: 18,
-  marginBottom: 8,
-  fontSize: 12,
-  color: "rgba(255,255,255,0.55)",
-  fontWeight: 900,
-  textTransform: "uppercase" as const,
-  letterSpacing: 1.2,
 };
 
 const inputStyle = {
   width: "100%",
-  padding: 17,
-  borderRadius: 22,
+  marginTop: 14,
+  padding: 15,
+  borderRadius: 16,
   background: "#050505",
   color: "white",
   border: "1px solid rgba(255,255,255,0.12)",
   outline: "none",
   boxSizing: "border-box" as const,
+  fontSize: 14,
+};
+
+const buttonStyle = {
+  width: "100%",
+  marginTop: 14,
+  padding: 15,
+  borderRadius: 999,
+  border: "none",
+  background: "white",
+  color: "black",
   fontSize: 15,
+  fontWeight: 900,
+  cursor: "pointer",
 };
 
-const amountHeroStyle = {
-  marginTop: 24,
-  padding: 24,
-  borderRadius: 30,
-  background: "#050505",
-  border: "1px solid rgba(255,255,255,0.11)",
-  textAlign: "center" as const,
-};
-
-const amountTextStyle = {
-  fontSize: 34,
-  lineHeight: 1,
-  fontWeight: 950,
-  letterSpacing: -1,
-};
-
-const routeTextStyle = {
+const backButtonStyle = {
+  width: "100%",
   marginTop: 10,
-  color: "rgba(255,255,255,0.58)",
+  padding: 13,
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(255,255,255,0.06)",
+  color: "white",
   fontSize: 14,
   fontWeight: 800,
+  cursor: "pointer",
 };
 
-const receiptStyle = {
-  marginTop: 16,
-  padding: 16,
-  borderRadius: 24,
+const smallSummaryStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  padding: 13,
+  marginBottom: 14,
+  borderRadius: 16,
   background: "#050505",
-  border: "1px solid rgba(255,255,255,0.11)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  fontSize: 13,
+  overflowWrap: "anywhere" as const,
+};
+
+const reviewBoxStyle = {
+  padding: 14,
+  borderRadius: 18,
+  background: "#050505",
+  border: "1px solid rgba(255,255,255,0.1)",
 };
 
 const rowStyle = {
   display: "flex",
   justifyContent: "space-between",
-  gap: 16,
-  padding: "12px 0",
+  gap: 14,
+  padding: "11px 0",
   borderBottom: "1px solid rgba(255,255,255,0.07)",
   fontSize: 14,
 };
@@ -452,8 +404,17 @@ const rowLabelStyle = {
 };
 
 const rowValueStyle = {
-  textAlign: "right" as const,
   maxWidth: "62%",
+  textAlign: "right" as const,
   overflowWrap: "anywhere" as const,
   fontWeight: 850,
+};
+
+const errorStyle = {
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 14,
+  background: "rgba(255,80,80,0.12)",
+  color: "#ffb4b4",
+  fontSize: 13,
 };
