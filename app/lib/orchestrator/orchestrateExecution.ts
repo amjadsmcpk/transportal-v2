@@ -1,4 +1,5 @@
 import { executeProvider } from "./executeProvider";
+import { selectProvider } from "@/app/lib/transportal-core/selectProvider";
 
 import type {
   ExecutionResult,
@@ -6,7 +7,7 @@ import type {
 } from "./types";
 
 type OrchestrateExecutionParams = {
-  providers: ProviderName[];
+  providers?: ProviderName[];
   amount: string;
   fromChain: string;
   toChain: string;
@@ -16,10 +17,15 @@ type OrchestrateExecutionParams = {
   userPublicKey?: string;
 };
 
+function uniqueProviders(providers: ProviderName[]) {
+  return Array.from(new Set(providers));
+}
+
 export async function orchestrateExecution(
   params: OrchestrateExecutionParams
 ): Promise<
   ExecutionResult & {
+    selectedProvider?: ProviderName;
     attemptedProviders: string[];
     providerErrors?: Record<string, string>;
   }
@@ -27,7 +33,28 @@ export async function orchestrateExecution(
   const attemptedProviders: string[] = [];
   const providerErrors: Record<string, string> = {};
 
-  for (const provider of params.providers) {
+  const smartProvider = selectProvider({
+    fromChain: params.fromChain,
+    toChain: params.toChain,
+    fromToken: params.fromToken,
+    toToken: params.toToken,
+  }) as ProviderName;
+
+  const fallbackProviders: ProviderName[] = [
+    "mayan",
+    "cctp",
+    "wormhole",
+    "jupiter",
+    "uniswap",
+  ];
+
+  const providers = uniqueProviders([
+    smartProvider,
+    ...(params.providers || []),
+    ...fallbackProviders,
+  ]);
+
+  for (const provider of providers) {
     attemptedProviders.push(provider);
 
     const result = await executeProvider({
@@ -44,6 +71,7 @@ export async function orchestrateExecution(
     if (result.success) {
       return {
         ...result,
+        selectedProvider: provider,
         attemptedProviders,
         providerErrors,
       };
@@ -55,10 +83,11 @@ export async function orchestrateExecution(
 
   return {
     success: false,
-    provider: params.providers[0],
+    provider: smartProvider,
+    selectedProvider: smartProvider,
     attemptedProviders,
     providerErrors,
-    status: "All providers failed.",
-    error: "Execution orchestration failed.",
+    status: "No available transfer path found.",
+    error: "Transportal could not complete this transfer with available providers.",
   };
 }
