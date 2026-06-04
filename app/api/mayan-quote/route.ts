@@ -14,98 +14,65 @@ type MayanToken = {
   chain?: string;
   chainId?: string | number;
   decimals?: number;
-};
-
-type TokenLookupResult = {
-  tokenAddress: string;
-  symbol: string;
-  decimals: number;
-  chain: string;
+  verified?: boolean;
+  disabledInSrc?: boolean;
+  disabledInDest?: boolean;
 };
 
 const CHAIN_ALIASES: Record<string, string> = {
   eth: "ethereum",
   ethereum: "ethereum",
   mainnet: "ethereum",
-
   sol: "solana",
   solana: "solana",
-
   base: "base",
   bsc: "bsc",
   bnb: "bsc",
-  "bnb chain": "bsc",
-  binance: "bsc",
-
   arbitrum: "arbitrum",
   arb: "arbitrum",
-
   optimism: "optimism",
   op: "optimism",
-
   polygon: "polygon",
   matic: "polygon",
-
   avalanche: "avalanche",
   avax: "avalanche",
-
   sui: "sui",
-
   monad: "monad",
   hyperevm: "hyperevm",
-  hyperliquid: "hyperevm",
 };
 
 const NATIVE_TOKEN_ADDRESS: Record<string, Record<string, string>> = {
-  ethereum: {
-    ETH: "0x0000000000000000000000000000000000000000",
-  },
-  base: {
-    ETH: "0x0000000000000000000000000000000000000000",
-  },
-  arbitrum: {
-    ETH: "0x0000000000000000000000000000000000000000",
-  },
-  optimism: {
-    ETH: "0x0000000000000000000000000000000000000000",
-  },
+  ethereum: { ETH: "0x0000000000000000000000000000000000000000" },
+  base: { ETH: "0x0000000000000000000000000000000000000000" },
+  arbitrum: { ETH: "0x0000000000000000000000000000000000000000" },
+  optimism: { ETH: "0x0000000000000000000000000000000000000000" },
   polygon: {
     MATIC: "0x0000000000000000000000000000000000000000",
     POL: "0x0000000000000000000000000000000000000000",
   },
-  avalanche: {
-    AVAX: "0x0000000000000000000000000000000000000000",
-  },
-  bsc: {
-    BNB: "0x0000000000000000000000000000000000000000",
-  },
-  solana: {
-    SOL: "So11111111111111111111111111111111111111112",
-  },
+  avalanche: { AVAX: "0x0000000000000000000000000000000000000000" },
+  bsc: { BNB: "0x0000000000000000000000000000000000000000" },
+  solana: { SOL: "So11111111111111111111111111111111111111112" },
 };
 
 function normalizeChain(value: unknown) {
-  const raw = String(value || "").toLowerCase().trim();
-
-  return CHAIN_ALIASES[raw] || raw;
+  return CHAIN_ALIASES[String(value || "").toLowerCase().trim()] || String(value || "").toLowerCase().trim();
 }
 
 function normalizeSymbol(value: unknown) {
   return String(value || "").toUpperCase().trim();
 }
 
+function getTokenAddress(token: MayanToken) {
+  return token.contract || token.mint || token.address || token.tokenAddress || "";
+}
+
 function getTokenChain(token: MayanToken) {
   return normalizeChain(token.chain || token.chainId || "");
 }
 
-function getTokenAddress(token: MayanToken) {
-  return (
-    token.contract ||
-    token.mint ||
-    token.address ||
-    token.tokenAddress ||
-    ""
-  );
+function looksLikeAddress(value: string) {
+  return value.startsWith("0x") || value.length > 30;
 }
 
 function amountToBaseUnits(amount: unknown, decimals: number) {
@@ -115,11 +82,8 @@ function amountToBaseUnits(amount: unknown, decimals: number) {
     throw new Error("Invalid amount.");
   }
 
-  const [wholePart, decimalPart = ""] = raw.split(".");
-  const whole = wholePart || "0";
-  const fraction = decimalPart.padEnd(decimals, "0").slice(0, decimals);
-
-  const value = `${whole}${fraction}`.replace(/^0+/, "");
+  const [whole = "0", fraction = ""] = raw.split(".");
+  const value = `${whole}${fraction.padEnd(decimals, "0").slice(0, decimals)}`.replace(/^0+/, "");
 
   return value || "0";
 }
@@ -127,9 +91,7 @@ function amountToBaseUnits(amount: unknown, decimals: number) {
 async function fetchMayanTokens(): Promise<MayanToken[]> {
   const res = await fetch("https://price-api.mayan.finance/v3/tokens", {
     cache: "no-store",
-    headers: {
-      Accept: "application/json",
-    },
+    headers: { Accept: "application/json" },
   });
 
   if (!res.ok) {
@@ -138,21 +100,11 @@ async function fetchMayanTokens(): Promise<MayanToken[]> {
 
   const data = await res.json();
 
-  console.log(
-    "MAYAN TOKENS RESPONSE",
-    JSON.stringify(data).slice(0, 5000)
-  );
-
-  if (Array.isArray(data)) {
-    return data as MayanToken[];
-  }
+  if (Array.isArray(data)) return data as MayanToken[];
 
   if (data && typeof data === "object") {
     return Object.entries(data).flatMap(([chain, tokens]) => {
-      if (!Array.isArray(tokens)) {
-        return [];
-      }
-
+      if (!Array.isArray(tokens)) return [];
       return tokens.map((token) => ({
         ...(token as MayanToken),
         chain,
@@ -163,41 +115,47 @@ async function fetchMayanTokens(): Promise<MayanToken[]> {
   return [];
 }
 
-function findToken(
-  tokens: MayanToken[],
-  chain: string,
-  symbol: string
-): TokenLookupResult | null {
+function findToken(tokens: MayanToken[], chain: string, tokenInput: string, direction: "source" | "destination") {
+  const symbol = normalizeSymbol(tokenInput);
+  const raw = String(tokenInput || "").trim();
+
   const nativeAddress = NATIVE_TOKEN_ADDRESS[chain]?.[symbol];
 
   if (nativeAddress) {
     return {
       tokenAddress: nativeAddress,
       symbol,
-      decimals:
-        symbol === "SOL"
-          ? 9
-          : symbol === "USDC" || symbol === "USDT"
-            ? 6
-            : 18,
+      decimals: symbol === "SOL" ? 9 : symbol === "USDC" || symbol === "USDT" ? 6 : 18,
       chain,
     };
   }
 
-  const exact = tokens.find((token) => {
-    const tokenSymbol = normalizeSymbol(token.symbol);
+  const matches = tokens.filter((token) => {
     const tokenChain = getTokenChain(token);
-    const address = getTokenAddress(token);
+    const tokenSymbol = normalizeSymbol(token.symbol);
+    const tokenAddress = getTokenAddress(token);
 
-    return tokenSymbol === symbol && tokenChain === chain && Boolean(address);
+    if (tokenChain !== chain) return false;
+    if (!tokenAddress) return false;
+
+    if (direction === "source" && token.disabledInSrc) return false;
+    if (direction === "destination" && token.disabledInDest) return false;
+
+    if (looksLikeAddress(raw)) {
+      return tokenAddress.toLowerCase() === raw.toLowerCase();
+    }
+
+    return tokenSymbol === symbol;
   });
 
-  if (!exact) return null;
+  const best = matches.find((token) => token.verified) || matches[0];
+
+  if (!best) return null;
 
   return {
-    tokenAddress: getTokenAddress(exact),
-    symbol: normalizeSymbol(exact.symbol),
-    decimals: Number(exact.decimals || 6),
+    tokenAddress: getTokenAddress(best),
+    symbol: normalizeSymbol(best.symbol || symbol),
+    decimals: Number(best.decimals || 6),
     chain,
   };
 }
@@ -209,14 +167,16 @@ export async function POST(req: Request) {
     const fromChain = normalizeChain(body.fromChain);
     const toChain = normalizeChain(body.toChain);
 
-    const fromTokenSymbol = normalizeSymbol(body.fromToken);
-    const toTokenSymbol = body.toToken
-      ? normalizeSymbol(body.toToken)
-      : toChain === "solana"
-        ? "SOL"
-        : fromTokenSymbol;
+    const fromTokenInput = String(body.fromToken || "").trim();
 
-    if (!fromChain || !toChain || !fromTokenSymbol || !toTokenSymbol) {
+    const toTokenInput =
+      body.toToken && String(body.toToken).trim()
+        ? String(body.toToken).trim()
+        : toChain === "solana"
+          ? "SOL"
+          : fromTokenInput;
+
+    if (!fromChain || !toChain || !fromTokenInput || !toTokenInput) {
       return NextResponse.json({
         success: false,
         error: "fromChain, toChain, fromToken, and toToken are required.",
@@ -225,18 +185,18 @@ export async function POST(req: Request) {
 
     const tokens = await fetchMayanTokens();
 
-    const fromToken = findToken(tokens, fromChain, fromTokenSymbol);
-    const toToken = findToken(tokens, toChain, toTokenSymbol);
+    const fromToken = findToken(tokens, fromChain, fromTokenInput, "source");
+    const toToken = findToken(tokens, toChain, toTokenInput, "destination");
 
     if (!fromToken || !toToken) {
       return NextResponse.json({
         success: false,
-        error: "Mayan token not found for selected chain/token.",
+        error: "This token is not available on Mayan for the selected route.",
         debug: {
           fromChain,
           toChain,
-          fromTokenSymbol,
-          toTokenSymbol,
+          fromTokenInput,
+          toTokenInput,
           fromTokenFound: Boolean(fromToken),
           toTokenFound: Boolean(toToken),
         },
@@ -261,18 +221,15 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: false,
         error: "No Mayan route available for this transfer.",
-        debug: {
-          quoteParams,
-          fromToken,
-          toToken,
-        },
+        debug: { quoteParams, fromToken, toToken },
       });
     }
 
     return NextResponse.json({
       success: true,
+      provider: "mayan",
       quote,
-      debug: {
+      resolved: {
         fromChain,
         toChain,
         fromToken,
@@ -281,14 +238,9 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
-    console.error("MAYAN FULL ERROR:", error);
-
     return NextResponse.json({
       success: false,
-      error:
-        error instanceof Error
-          ? error.stack || error.message
-          : JSON.stringify(error),
+      error: error instanceof Error ? error.message : "Mayan quote failed.",
     });
   }
 }
