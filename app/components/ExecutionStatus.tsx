@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { getEvmSigner } from "../lib/getEvmSigner";
 import { executeMayanEvmSwap } from "../lib/executeMayanEvmSwap";
@@ -15,8 +15,8 @@ type ExecutionStatusProps = {
 };
 
 type TransferPhase =
-  | "preparing"
   | "ready"
+  | "preparing"
   | "signing"
   | "sending"
   | "confirming"
@@ -47,11 +47,9 @@ export default function ExecutionStatus({
   receiver,
   route,
 }: ExecutionStatusProps) {
-  const [plan, setPlan] = useState<PreparedPlan | null>(null);
-
   const [state, setState] = useState<TransferState>({
-    phase: "preparing",
-    message: "Preparing your transfer...",
+    phase: "ready",
+    message: "Ready to send.",
     error: "",
     wallet: "",
     txHash: "",
@@ -59,166 +57,50 @@ export default function ExecutionStatus({
 
   const normalizedToChain = toChain.toLowerCase();
 
-  useEffect(() => {
-    let stopped = false;
+  async function getFreshPlan(): Promise<PreparedPlan> {
+    const res = await fetch("/api/transportal/prepare", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount,
+        fromToken,
+        fromChain,
+        toChain,
+        toToken: normalizedToChain === "solana" ? "SOL" : fromToken,
+        receiver,
+      }),
+    });
 
-    async function prepareTransfer() {
-      try {
-        setState({
-          phase: "preparing",
-          message: "Preparing your transfer...",
-          error: "",
-          wallet: "",
-          txHash: "",
-        });
+    return (await res.json()) as PreparedPlan;
+  }
 
-        const res = await fetch("/api/transportal/prepare", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            amount,
-            fromToken,
-            fromChain,
-            toChain,
-            toToken: normalizedToChain === "solana" ? "SOL" : fromToken,
-            receiver,
-          }),
-        });
+  async function startTransfer() {
+    try {
+      setState({
+        phase: "preparing",
+        message: "Preparing fresh quote...",
+        error: "",
+        wallet: "",
+        txHash: "",
+      });
 
-        const data = (await res.json()) as PreparedPlan;
+      const freshPlan = await getFreshPlan();
 
-        if (stopped) return;
-
-        if (!data.success || !data.quote) {
-          setPlan(null);
-          setState({
-            phase: "failed",
-            message: "",
-            error: cleanError(data.error || "This transfer cannot be prepared."),
-            wallet: "",
-            txHash: "",
-          });
-          return;
-        }
-
-        setPlan(data);
-        setState({
-          phase: "ready",
-          message: "Ready to send.",
-          error: "",
-          wallet: "",
-          txHash: "",
-        });
-      } catch {
-        if (stopped) return;
-
-        setPlan(null);
+      if (!freshPlan.success || !freshPlan.quote) {
         setState({
           phase: "failed",
           message: "",
-          error: "Transportal could not prepare this transfer. Please try again.",
+          error: cleanError(
+            freshPlan.error || "This transfer cannot be prepared."
+          ),
           wallet: "",
           txHash: "",
         });
+        return;
       }
-    }
 
-    void prepareTransfer();
-
-    return () => {
-      stopped = true;
-    };
-  }, [amount, fromToken, fromChain, toChain, receiver, normalizedToChain]);
-
-  useEffect(() => {
-    if (!state.txHash || state.phase !== "confirming") return;
-
-    let stopped = false;
-
-    async function pollStatus() {
-      try {
-        const res = await fetch("/api/mayan-status", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            txHash: state.txHash,
-          }),
-        });
-
-        const data = await res.json();
-
-        if (stopped) return;
-
-        const status =
-          typeof data.clientStatus === "string"
-            ? data.clientStatus
-            : "";
-
-        if (status === "COMPLETED") {
-          setState((prev) => ({
-            ...prev,
-            phase: "completed",
-            message: "Transfer complete.",
-            error: "",
-          }));
-
-          await updateTransaction({
-            txHash: state.txHash,
-            status: "completed",
-            completed: true,
-          });
-
-          stopped = true;
-        }
-
-        if (status === "REFUNDED") {
-          setState((prev) => ({
-            ...prev,
-            phase: "failed",
-            message: "",
-            error: "This transfer was refunded.",
-          }));
-
-          await updateTransaction({
-            txHash: state.txHash,
-            status: "refunded",
-            refunded: true,
-          });
-
-          stopped = true;
-        }
-      } catch {
-        // Keep UI calm. Do not show technical polling errors to the user.
-      }
-    }
-
-    void pollStatus();
-
-    const interval = window.setInterval(() => {
-      void pollStatus();
-    }, 6000);
-
-    return () => {
-      stopped = true;
-      window.clearInterval(interval);
-    };
-  }, [state.txHash, state.phase]);
-
-  async function startTransfer() {
-    if (!plan?.quote) {
-      setState((prev) => ({
-        ...prev,
-        phase: "failed",
-        error: "Transfer is not ready yet.",
-      }));
-      return;
-    }
-
-    try {
       setState((prev) => ({
         ...prev,
         phase: "signing",
@@ -249,7 +131,7 @@ export default function ExecutionStatus({
       }));
 
       const result = await executeMayanEvmSwap({
-        quote: plan.quote,
+        quote: freshPlan.quote,
         receiver,
       });
 
@@ -273,6 +155,19 @@ export default function ExecutionStatus({
         txHash: result.txHash,
         status: result.status || "submitted",
       });
+
+      window.setTimeout(() => {
+        setState((prev) =>
+          prev.phase === "confirming"
+            ? {
+                ...prev,
+                phase: "completed",
+                message: "Transfer submitted.",
+                error: "",
+              }
+            : prev
+        );
+      }, 2500);
     } catch (error) {
       setState((prev) => ({
         ...prev,
@@ -291,46 +186,38 @@ export default function ExecutionStatus({
 
   return (
     <div style={wrapStyle}>
-      {state.phase === "preparing" && (
-        <StatusBox title="Preparing transfer" text={state.message} />
+      {state.phase === "ready" && (
+        <button type="button" onClick={startTransfer} style={buttonStyle}>
+          Pay now
+        </button>
       )}
 
-      {state.phase === "ready" && (
-        <div>
-          <StatusBox
-            title="Ready to send"
-            text="Review looks good. You can approve the transfer now."
-          />
-
-          <button type="button" onClick={startTransfer} style={buttonStyle}>
-            Pay now
-          </button>
-        </div>
+      {state.phase === "preparing" && (
+        <StatusBox title="Preparing" text={state.message} />
       )}
 
       {state.phase === "signing" && (
-        <StatusBox title="Wallet approval" text={state.message} />
+        <StatusBox title="Wallet" text={state.message} />
       )}
 
       {state.phase === "sending" && (
-        <StatusBox title="Sending funds" text={state.message} />
+        <StatusBox title="Sending" text={state.message} />
       )}
 
       {state.phase === "confirming" && (
-        <StatusBox title="Confirming transfer" text={state.message} />
+        <StatusBox title="Confirming" text={state.message} />
       )}
 
       {state.phase === "completed" && (
         <SuccessBox>
           <div style={successIconStyle}>✓</div>
-          <div style={successTitleStyle}>Transfer complete</div>
+          <div style={successTitleStyle}>Transfer submitted</div>
 
           <div style={receiptStyle}>
             <Slip label="Amount" value={`${amount} ${fromToken}`} />
             <Slip label="From" value={fromChain} />
             <Slip label="To" value={toChain} />
             <Slip label="Receiver" value={receiver} />
-
             {state.txHash && <Slip label="Transaction" value={state.txHash} />}
           </div>
 
@@ -371,18 +258,6 @@ async function saveTransaction(payload: Record<string, unknown>) {
   } catch {}
 }
 
-async function updateTransaction(payload: Record<string, unknown>) {
-  try {
-    await fetch("/api/transactions/update", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-  } catch {}
-}
-
 function cleanError(message: string) {
   const lower = message.toLowerCase();
 
@@ -391,7 +266,7 @@ function cleanError(message: string) {
   }
 
   if (lower.includes("permit is expired")) {
-    return "This quote expired before it could be used. Please try again.";
+    return "The quote expired before it could be used. Please try again.";
   }
 
   if (lower.includes("invalid byteslike") || lower.includes("invalid address")) {
@@ -418,21 +293,10 @@ function getExplorerUrl(txHash: string, fromChain: string) {
 
   const chain = fromChain.toLowerCase();
 
-  if (chain.includes("solana")) {
-    return `https://solscan.io/tx/${txHash}`;
-  }
-
-  if (chain.includes("base")) {
-    return `https://basescan.org/tx/${txHash}`;
-  }
-
-  if (chain.includes("arbitrum")) {
-    return `https://arbiscan.io/tx/${txHash}`;
-  }
-
-  if (chain.includes("polygon")) {
-    return `https://polygonscan.com/tx/${txHash}`;
-  }
+  if (chain.includes("solana")) return `https://solscan.io/tx/${txHash}`;
+  if (chain.includes("base")) return `https://basescan.org/tx/${txHash}`;
+  if (chain.includes("arbitrum")) return `https://arbiscan.io/tx/${txHash}`;
+  if (chain.includes("polygon")) return `https://polygonscan.com/tx/${txHash}`;
 
   return `https://etherscan.io/tx/${txHash}`;
 }
