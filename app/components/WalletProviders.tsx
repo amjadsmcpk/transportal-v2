@@ -2,15 +2,94 @@
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-import type { ReactNode } from "react";
-import { useMemo } from "react";
+import { ReactNode, useMemo } from "react";
 
-import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
-import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import {
+  ConnectionProvider,
+  WalletProvider,
+} from "@solana/wallet-adapter-react";
+
+import {
+  WalletModalProvider,
+} from "@solana/wallet-adapter-react-ui";
+
 import {
   PhantomWalletAdapter,
   SolflareWalletAdapter,
 } from "@solana/wallet-adapter-wallets";
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+import { createAppKit } from "@reown/appkit/react";
+
+import { EthersAdapter } from "@reown/appkit-adapter-ethers";
+
+const projectId =
+  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
+
+const metadata = {
+  name: "TRANSPORTAL",
+  description: "AI Cross Chain Payments",
+  url: "https://transportal.ai",
+  icons: [],
+};
+
+const ethersAdapter = new EthersAdapter();
+
+createAppKit({
+  adapters: [ethersAdapter],
+  projectId,
+  metadata,
+  networks: [
+    {
+      id: 1,
+      name: "Ethereum",
+      nativeCurrency: {
+        name: "Ether",
+        symbol: "ETH",
+        decimals: 18,
+      },
+      rpcUrls: {
+        default: {
+          http: ["https://ethereum-rpc.publicnode.com"],
+        },
+      },
+    },
+    {
+      id: 8453,
+      name: "Base",
+      nativeCurrency: {
+        name: "Ether",
+        symbol: "ETH",
+        decimals: 18,
+      },
+      rpcUrls: {
+        default: {
+          http: ["https://mainnet.base.org"],
+        },
+      },
+    },
+    {
+      id: 42161,
+      name: "Arbitrum",
+      nativeCurrency: {
+        name: "Ether",
+        symbol: "ETH",
+        decimals: 18,
+      },
+      rpcUrls: {
+        default: {
+          http: ["https://arb1.arbitrum.io/rpc"],
+        },
+      },
+    },
+  ],
+  features: {
+    analytics: false,
+  },
+});
+
+const queryClient = new QueryClient();
 
 export default function WalletProviders({
   children,
@@ -18,15 +97,25 @@ export default function WalletProviders({
   children: ReactNode;
 }) {
   const solanaWallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+    ],
     []
   );
 
   return (
-    <ConnectionProvider endpoint="https://api.mainnet-beta.solana.com">
-      <WalletProvider wallets={solanaWallets} autoConnect={false}>
-        <WalletModalProvider>{children}</WalletModalProvider>
-      </WalletProvider>
-    </ConnectionProvider>
+    <QueryClientProvider client={queryClient}>
+      <ConnectionProvider endpoint="https://api.mainnet-beta.solana.com">
+        <WalletProvider
+          wallets={solanaWallets}
+          autoConnect={false}
+        >
+          <WalletModalProvider>
+            {children}
+          </WalletModalProvider>
+        </WalletProvider>
+      </ConnectionProvider>
+    </QueryClientProvider>
   );
 }
