@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useAppKit } from "@reown/appkit/react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 type EthereumLike = {
@@ -11,6 +10,16 @@ type EthereumLike = {
     params?: unknown[];
   }) => Promise<unknown>;
   selectedAddress?: string;
+};
+
+type PhantomLike = {
+  isPhantom?: boolean;
+  connect?: () => Promise<{
+    publicKey?: {
+      toBase58?: () => string;
+    };
+  }>;
+  disconnect?: () => Promise<void>;
 };
 
 type WalletType = "evm" | "solana" | "";
@@ -30,8 +39,6 @@ function shortAddress(address: string) {
 
 export default function SmartWalletConnect() {
   const appKit = useSafeAppKit();
-
-  const { setVisible } = useWalletModal();
   const solanaWallet = useWallet();
 
   const [wallet, setWallet] = useState("");
@@ -52,12 +59,16 @@ export default function SmartWalletConnect() {
     const publicKey = solanaWallet.publicKey?.toBase58() || "";
 
     if (publicKey) {
-      setWallet(publicKey);
-      setWalletType("solana");
-      window.localStorage.setItem("transportal_wallet", publicKey);
-      window.localStorage.setItem("transportal_wallet_type", "solana");
+      saveWallet(publicKey, "solana");
     }
   }, [solanaWallet.publicKey]);
+
+  function saveWallet(address: string, type: WalletType) {
+    setWallet(address);
+    setWalletType(type);
+    window.localStorage.setItem("transportal_wallet", address);
+    window.localStorage.setItem("transportal_wallet_type", type);
+  }
 
   async function readEvmWallet() {
     const ethereum = (window as unknown as { ethereum?: EthereumLike }).ethereum;
@@ -65,10 +76,7 @@ export default function SmartWalletConnect() {
     const selected = ethereum?.selectedAddress || "";
 
     if (selected) {
-      setWallet(selected);
-      setWalletType("evm");
-      window.localStorage.setItem("transportal_wallet", selected);
-      window.localStorage.setItem("transportal_wallet_type", "evm");
+      saveWallet(selected, "evm");
       return selected;
     }
 
@@ -93,11 +101,7 @@ export default function SmartWalletConnect() {
       throw new Error("No wallet address returned.");
     }
 
-    setWallet(address);
-    setWalletType("evm");
-    window.localStorage.setItem("transportal_wallet", address);
-    window.localStorage.setItem("transportal_wallet_type", "evm");
-
+    saveWallet(address, "evm");
     return address;
   }
 
@@ -131,24 +135,66 @@ export default function SmartWalletConnect() {
     }
   }
 
-   function connectSolanaWallet() {
-  alert("Solana button clicked");
+  async function connectSolanaWallet() {
+    setError("");
 
-  setError("");
+    const phantom = (
+      window as unknown as {
+        solana?: PhantomLike;
+        phantom?: {
+          solana?: PhantomLike;
+        };
+      }
+    ).phantom?.solana;
 
-  try {
-    setVisible(true);
-  } catch {
-      setError(
-        "Solana wallet connection failed. Install Phantom or Solflare and try again."
-      );
+    const injectedSolana = (
+      window as unknown as {
+        solana?: PhantomLike;
+      }
+    ).solana;
+
+    const solana = phantom || injectedSolana;
+
+    if (solana?.isPhantom && solana.connect) {
+      try {
+        const response = await solana.connect();
+        const address = response.publicKey?.toBase58?.() || "";
+
+        if (!address) {
+          setError("No Solana wallet address returned.");
+          return;
+        }
+
+        saveWallet(address, "solana");
+        return;
+      } catch {
+        setError("Phantom connection was cancelled or failed.");
+        return;
+      }
     }
+
+    setError(
+      "Phantom was not found. Install Phantom or open Transportal inside Phantom browser."
+    );
   }
 
   async function disconnectWallet() {
     try {
       if (walletType === "solana" && solanaWallet.disconnect) {
         await solanaWallet.disconnect();
+      }
+
+      const solana = (
+        window as unknown as {
+          solana?: PhantomLike;
+          phantom?: {
+            solana?: PhantomLike;
+          };
+        }
+      ).phantom?.solana || (window as unknown as { solana?: PhantomLike }).solana;
+
+      if (walletType === "solana" && solana?.disconnect) {
+        await solana.disconnect();
       }
     } catch {}
 
