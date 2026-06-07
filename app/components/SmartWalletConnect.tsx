@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAppKit } from "@reown/appkit/react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 type EthereumLike = {
@@ -10,16 +11,6 @@ type EthereumLike = {
     params?: unknown[];
   }) => Promise<unknown>;
   selectedAddress?: string;
-};
-
-type PhantomLike = {
-  isPhantom?: boolean;
-  connect?: () => Promise<{
-    publicKey?: {
-      toBase58?: () => string;
-    };
-  }>;
-  disconnect?: () => Promise<void>;
 };
 
 type WalletType = "evm" | "solana" | "";
@@ -39,6 +30,7 @@ function shortAddress(address: string) {
 
 export default function SmartWalletConnect() {
   const appKit = useSafeAppKit();
+  const { setVisible } = useWalletModal();
   const solanaWallet = useWallet();
 
   const [wallet, setWallet] = useState("");
@@ -72,7 +64,6 @@ export default function SmartWalletConnect() {
 
   async function readEvmWallet() {
     const ethereum = (window as unknown as { ethereum?: EthereumLike }).ethereum;
-
     const selected = ethereum?.selectedAddress || "";
 
     if (selected) {
@@ -135,66 +126,22 @@ export default function SmartWalletConnect() {
     }
   }
 
-  async function connectSolanaWallet() {
+  function connectSolanaWallet() {
     setError("");
 
-    const phantom = (
-      window as unknown as {
-        solana?: PhantomLike;
-        phantom?: {
-          solana?: PhantomLike;
-        };
-      }
-    ).phantom?.solana;
-
-    const injectedSolana = (
-      window as unknown as {
-        solana?: PhantomLike;
-      }
-    ).solana;
-
-    const solana = phantom || injectedSolana;
-
-    if (solana?.isPhantom && solana.connect) {
-      try {
-        const response = await solana.connect();
-        const address = response.publicKey?.toBase58?.() || "";
-
-        if (!address) {
-          setError("No Solana wallet address returned.");
-          return;
-        }
-
-        saveWallet(address, "solana");
-        return;
-      } catch {
-        setError("Phantom connection was cancelled or failed.");
-        return;
-      }
+    try {
+      setVisible(true);
+    } catch {
+      setError(
+        "Solana wallet picker failed to open. Please install Phantom, Solflare, or Backpack."
+      );
     }
-
-    setError(
-      "Phantom was not found. Install Phantom or open Transportal inside Phantom browser."
-    );
   }
 
   async function disconnectWallet() {
     try {
       if (walletType === "solana" && solanaWallet.disconnect) {
         await solanaWallet.disconnect();
-      }
-
-      const solana = (
-        window as unknown as {
-          solana?: PhantomLike;
-          phantom?: {
-            solana?: PhantomLike;
-          };
-        }
-      ).phantom?.solana || (window as unknown as { solana?: PhantomLike }).solana;
-
-      if (walletType === "solana" && solana?.disconnect) {
-        await solana.disconnect();
       }
     } catch {}
 
@@ -233,6 +180,11 @@ export default function SmartWalletConnect() {
       <button type="button" onClick={connectSolanaWallet} style={darkButtonStyle}>
         Connect Solana Wallet
       </button>
+
+      <div style={hintStyle}>
+        Use EVM for MetaMask, Trust, Coinbase, Rainbow, Rabby. Use Solana for
+        Phantom, Solflare, Backpack, Glow.
+      </div>
 
       {error ? <div style={errorStyle}>{error}</div> : null}
     </div>
@@ -297,6 +249,12 @@ const secondaryButtonStyle = {
   fontWeight: 850,
   cursor: "pointer",
 } as const;
+
+const hintStyle = {
+  fontSize: 12,
+  color: "rgba(255,255,255,0.55)",
+  lineHeight: 1.45,
+};
 
 const errorStyle = {
   color: "#ffb4b4",
