@@ -131,12 +131,14 @@ export default function SmartWalletConnect() {
     }
   }
 
-  function connectSolanaWallet() {
-    setError("");
+   function connectSolanaWallet() {
+  alert("Solana button clicked");
 
-    try {
-      setVisible(true);
-    } catch {
+  setError("");
+
+  try {
+    setVisible(true);
+  } catch {
       setError(
         "Solana wallet connection failed. Install Phantom or Solflare and try again."
       );
