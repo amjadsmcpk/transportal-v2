@@ -37,7 +37,7 @@ createAppKit({
   metadata: {
     name: "TRANSPORTAL",
     description: "AI Cross Chain Payments",
-    url: "https://transportal-v2.vercel.app",
+    url: "https://transportalbridge.com",
     icons: [],
   },
 
