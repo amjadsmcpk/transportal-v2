@@ -1,37 +1,43 @@
-import { BrowserProvider } from "ethers";
+"use client";
 
-type EthereumWindow = Window & {
-  ethereum?: object;
+import { BrowserProvider, type Eip1193Provider } from "ethers";
+
+type EthereumLike = Eip1193Provider & {
+  selectedAddress?: string;
 };
 
-type ConfirmEvmResult = {
-  success: boolean;
-  confirmed: boolean;
-  txHash: string;
-};
+type BrowserWindow = Window &
+  typeof globalThis & {
+    ethereum?: EthereumLike;
+  };
 
-export async function confirmEvmTransaction(
-  txHash: string
-): Promise<ConfirmEvmResult> {
+export async function confirmEvmTransaction(txHash: string) {
   if (typeof window === "undefined") {
-    throw new Error("Window not available.");
+    throw new Error("Wallet is only available in the browser.");
   }
 
-  const win = window as EthereumWindow;
+  const win = window as BrowserWindow;
 
   if (!win.ethereum) {
-    throw new Error("Ethereum wallet not found.");
+    throw new Error("No EVM wallet found.");
   }
 
-  const provider = new BrowserProvider(
-    win.ethereum as ConstructorParameters<typeof BrowserProvider>[0]
-  );
+  const provider = new BrowserProvider(win.ethereum);
 
   const receipt = await provider.getTransactionReceipt(txHash);
 
+  if (!receipt) {
+    return {
+      success: false,
+      status: "pending",
+      txHash,
+    };
+  }
+
   return {
-    success: true,
-    confirmed: Boolean(receipt),
+    success: receipt.status === 1,
+    status: receipt.status === 1 ? "confirmed" : "failed",
     txHash,
+    blockNumber: receipt.blockNumber,
   };
 }

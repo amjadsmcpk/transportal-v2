@@ -1,43 +1,45 @@
-import { BrowserProvider } from "ethers";
+"use client";
 
-type BroadcastEvmParams = {
+import { BrowserProvider, type Eip1193Provider } from "ethers";
+
+type EthereumLike = Eip1193Provider & {
+  selectedAddress?: string;
+};
+
+type BrowserWindow = Window &
+  typeof globalThis & {
+    ethereum?: EthereumLike;
+  };
+
+type BroadcastEvmTransactionParams = {
   to: string;
-  data: string;
-  value?: string;
+  data?: string;
+  value?: string | bigint;
 };
 
-type BroadcastEvmResult = {
-  success: boolean;
-  txHash: string;
-};
-
-type EthereumWindow = Window & {
-  ethereum?: object;
-};
-
-export async function broadcastEvmTransaction(
-  params: BroadcastEvmParams
-): Promise<BroadcastEvmResult> {
+export async function broadcastEvmTransaction({
+  to,
+  data = "0x",
+  value = "0x0",
+}: BroadcastEvmTransactionParams) {
   if (typeof window === "undefined") {
-    throw new Error("Window not available.");
+    throw new Error("Wallet is only available in the browser.");
   }
 
-  const win = window as EthereumWindow;
+  const win = window as BrowserWindow;
 
   if (!win.ethereum) {
-    throw new Error("Ethereum wallet not found.");
+    throw new Error("No EVM wallet found.");
   }
 
-  const provider = new BrowserProvider(
-    win.ethereum as ConstructorParameters<typeof BrowserProvider>[0]
-  );
+  const provider = new BrowserProvider(win.ethereum);
 
   const signer = await provider.getSigner();
 
   const tx = await signer.sendTransaction({
-    to: params.to,
-    data: params.data,
-    value: params.value || "0",
+    to,
+    data,
+    value,
   });
 
   return {

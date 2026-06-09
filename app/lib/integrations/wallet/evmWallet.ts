@@ -1,35 +1,39 @@
-import { BrowserProvider } from "ethers";
+"use client";
 
-import type { EvmWalletResult } from "./walletTypes";
+import { BrowserProvider, type Eip1193Provider } from "ethers";
 
-type BrowserWalletWindow = Window & {
-  ethereum?: object;
+type EthereumLike = Eip1193Provider & {
+  selectedAddress?: string;
 };
 
-export async function connectEvmWallet(): Promise<EvmWalletResult> {
+type BrowserWindow = Window &
+  typeof globalThis & {
+    ethereum?: EthereumLike;
+  };
+
+export async function getEvmWallet() {
   if (typeof window === "undefined") {
-    throw new Error("Window is not available.");
+    throw new Error("Wallet is only available in the browser.");
   }
 
-  const win = window as BrowserWalletWindow;
+  const win = window as BrowserWindow;
 
   if (!win.ethereum) {
-    throw new Error("EVM wallet not found.");
+    throw new Error("No EVM wallet found.");
   }
 
-  const provider = new BrowserProvider(
-    win.ethereum as ConstructorParameters<typeof BrowserProvider>[0]
-  );
+  const provider = new BrowserProvider(win.ethereum);
 
   await provider.send("eth_requestAccounts", []);
 
   const signer = await provider.getSigner();
-
   const address = await signer.getAddress();
+  const network = await provider.getNetwork();
 
   return {
     provider,
     signer,
     address,
+    chainId: Number(network.chainId),
   };
 }
