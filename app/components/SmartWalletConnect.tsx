@@ -1,27 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAppKit } from "@reown/appkit/react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { useWallet } from "@solana/wallet-adapter-react";
-
-type EthereumLike = {
-  request: (args: {
-    method: string;
-    params?: unknown[];
-  }) => Promise<unknown>;
-  selectedAddress?: string;
-};
+import {
+  useAppKit,
+  useAppKitAccount,
+  useDisconnect,
+} from "@reown/appkit/react";
 
 type WalletType = "evm" | "solana" | "";
-
-function useSafeAppKit() {
-  try {
-    return useAppKit();
-  } catch {
-    return null;
-  }
-}
 
 function shortAddress(address: string) {
   if (address.length <= 14) return address;
@@ -29,9 +15,16 @@ function shortAddress(address: string) {
 }
 
 export default function SmartWalletConnect() {
-  const appKit = useSafeAppKit();
-  const { setVisible } = useWalletModal();
-  const solanaWallet = useWallet();
+  const { open } = useAppKit();
+  const { disconnect } = useDisconnect();
+
+  const evmAccount = useAppKitAccount({
+    namespace: "eip155",
+  });
+
+  const solanaAccount = useAppKitAccount({
+    namespace: "solana",
+  });
 
   const [wallet, setWallet] = useState("");
   const [walletType, setWalletType] = useState<WalletType>("");
@@ -48,12 +41,24 @@ export default function SmartWalletConnect() {
   }, []);
 
   useEffect(() => {
-    const publicKey = solanaWallet.publicKey?.toBase58() || "";
+    const solanaAddress = solanaAccount.address || "";
+    const evmAddress = evmAccount.address || "";
 
-    if (publicKey) {
-      saveWallet(publicKey, "solana");
+    if (solanaAccount.isConnected && solanaAddress) {
+      saveWallet(solanaAddress, "solana");
+      return;
     }
-  }, [solanaWallet.publicKey]);
+
+    if (evmAccount.isConnected && evmAddress) {
+      saveWallet(evmAddress, "evm");
+      return;
+    }
+  }, [
+    evmAccount.address,
+    evmAccount.isConnected,
+    solanaAccount.address,
+    solanaAccount.isConnected,
+  ]);
 
   function saveWallet(address: string, type: WalletType) {
     setWallet(address);
@@ -62,86 +67,44 @@ export default function SmartWalletConnect() {
     window.localStorage.setItem("transportal_wallet_type", type);
   }
 
-  async function readEvmWallet() {
-    const ethereum = (window as unknown as { ethereum?: EthereumLike }).ethereum;
-    const selected = ethereum?.selectedAddress || "";
-
-    if (selected) {
-      saveWallet(selected, "evm");
-      return selected;
-    }
-
-    return "";
-  }
-
-  async function connectWithBrowserWallet() {
-    const ethereum = (window as unknown as { ethereum?: EthereumLike }).ethereum;
-
-    if (!ethereum) {
-      throw new Error("No browser wallet found.");
-    }
-
-    const response = await ethereum.request({
-      method: "eth_requestAccounts",
-    });
-
-    const accounts = Array.isArray(response) ? response : [];
-    const address = typeof accounts[0] === "string" ? accounts[0] : "";
-
-    if (!address) {
-      throw new Error("No wallet address returned.");
-    }
-
-    saveWallet(address, "evm");
-    return address;
-  }
-
   async function connectEvmWallet() {
     setError("");
 
     try {
-      if (appKit?.open) {
-        await appKit.open();
-
-        window.setTimeout(() => {
-          void readEvmWallet();
-        }, 1800);
-
-        window.setTimeout(() => {
-          void readEvmWallet();
-        }, 3500);
-
-        return;
-      }
-
-      await connectWithBrowserWallet();
+      await open({
+        view: "Connect",
+        namespace: "eip155",
+      });
     } catch {
-      try {
-        await connectWithBrowserWallet();
-      } catch {
-        setError(
-          "EVM wallet connection failed. On mobile, choose WalletConnect or open Transportal inside your wallet browser."
-        );
-      }
+      setError("EVM wallet connection failed. Please try again.");
     }
   }
 
-  function connectSolanaWallet() {
+  async function connectSolanaWallet() {
     setError("");
 
     try {
-      setVisible(true);
+      await open({
+        view: "Connect",
+        namespace: "solana",
+      });
     } catch {
-      setError(
-        "Solana wallet picker failed to open. Please install Phantom, Solflare, or Backpack."
-      );
+      setError("Solana wallet connection failed. Please try again.");
     }
   }
 
   async function disconnectWallet() {
     try {
-      if (walletType === "solana" && solanaWallet.disconnect) {
-        await solanaWallet.disconnect();
+      if (walletType === "solana") {
+        await disconnect({
+          namespace: "solana",
+        });
+      } else if (walletType === "evm") {
+        await disconnect({
+          namespace: "eip155",
+        });
+      } else {
+        await disconnect();
       }
     } catch {}
 
@@ -177,13 +140,17 @@ export default function SmartWalletConnect() {
         Connect EVM Wallet
       </button>
 
-      <button type="button" onClick={connectSolanaWallet} style={darkButtonStyle}>
+      <button
+        type="button"
+        onClick={connectSolanaWallet}
+        style={darkButtonStyle}
+      >
         Connect Solana Wallet
       </button>
 
       <div style={hintStyle}>
-        Use EVM for MetaMask, Trust, Coinbase, Rainbow, Rabby. Use Solana for
-        Phantom, Solflare, Backpack, Glow.
+        EVM: MetaMask, Trust, Coinbase, Rabby. Solana: Phantom, Solflare,
+        Backpack, Glow.
       </div>
 
       {error ? <div style={errorStyle}>{error}</div> : null}
